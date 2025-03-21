@@ -35,10 +35,44 @@ impl App {
 }
 */
 
-use std::fs::File;
+use core::fmt;
 use std::io;
 use std::io::BufReader;
 use std::io::ErrorKind::InvalidInput;
+use std::{fmt::Display, fs::File};
+
+use vcd::ScopeItem;
+
+struct MyScopeItem<'a>(&'a ScopeItem, i8);
+
+impl<'a> Display for MyScopeItem<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use ScopeItem::*;
+        match &self.0 {
+            Comment(comment) => {
+                writeln!(f, "Comment: {comment}")?;
+            }
+            Var(var) => {
+                let var_name = &var.reference;
+                writeln!(f, "Var: {var_name}")?;
+            }
+            Scope(scope) => {
+                let scope_name = &scope.identifier;
+                writeln!(f, "Scope: {scope_name}")?;
+                scope.items.iter().try_for_each(|x| -> fmt::Result {
+                    let my_scope_item = MyScopeItem(x, self.1 + 1);
+                    for _ in 1..self.1 {
+                        write!(f, "  ")?;
+                    }
+                    writeln!(f, "{my_scope_item}")?;
+                    Ok(())
+                })?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
 
 /// Parse a VCD file containing a clocked signal and decode the signal
 fn read_clocked_vcd(r: &mut dyn io::BufRead) -> io::Result<()> {
@@ -46,6 +80,11 @@ fn read_clocked_vcd(r: &mut dyn io::BufRead) -> io::Result<()> {
 
     // Parse the header and find the wires
     let header = parser.parse_header()?;
+
+    header.items.iter().for_each(|x| {
+        let my_scope_item = MyScopeItem(x, 1);
+        println!("{my_scope_item}");
+    });
 
     let clock_code = header
         .find_var(&["test_tb", "clk"])
@@ -66,14 +105,13 @@ fn read_clocked_vcd(r: &mut dyn io::BufRead) -> io::Result<()> {
     }
 
     let result = clock_vec.join(" ");
-
     println!("{result}");
 
     Ok(())
 }
 
 fn main() -> std::io::Result<()> {
-    let file_path = "./src/test.vcd";
+    let file_path = "./src/test_1.vcd";
 
     println!("In file {file_path}");
 
