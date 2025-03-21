@@ -2,8 +2,9 @@ use core::fmt;
 use std::fmt::Display;
 
 use crate::signal::Signal;
+use crate::signal::ValueType;
 
-use vcd::{Scope, ScopeItem, ScopeType};
+use vcd::{IdCode, Scope, ScopeItem, ScopeType, Value};
 
 pub struct Module {
     pub(crate) name: String,
@@ -58,5 +59,18 @@ impl Display for Module {
             Ok(())
         })?;
         Ok(())
+    }
+}
+
+impl Module {
+    pub fn add_event(&mut self, id: IdCode, timestamp: u64, value: ValueType) {
+        self.signals
+            .iter_mut()
+            .filter(|x| x.code == id)
+            .for_each(|x| x.add_event(timestamp, value.clone()));
+
+        self.submodules
+            .iter_mut()
+            .for_each(|x| x.add_event(id, timestamp, value.clone()));
     }
 }

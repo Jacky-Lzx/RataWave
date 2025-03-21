@@ -1,13 +1,19 @@
 use core::fmt;
 use std::fmt::Display;
 
-use vcd::{IdCode, Var};
+use vcd::{IdCode, Value, Var, Vector};
+
+#[derive(Debug, Clone)]
+pub enum ValueType {
+    Value(Value),
+    Vector(Vector),
+}
 
 pub struct Signal {
     // reference string in vcd file
-    code: IdCode,
-    name: String,
-    events: Vec<(u64, u64)>,
+    pub code: IdCode,
+    pub name: String,
+    pub events: Vec<(u64, ValueType)>,
 }
 
 impl Signal {
@@ -17,6 +23,10 @@ impl Signal {
             name: var.reference.clone(),
             events: vec![],
         }
+    }
+
+    pub fn add_event(&mut self, timestamp: u64, value: ValueType) {
+        self.events.push((timestamp, value));
     }
 }
 
