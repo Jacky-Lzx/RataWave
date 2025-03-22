@@ -1,4 +1,5 @@
 use std::{
+    cmp::max,
     fs::File,
     io::{self, BufReader},
 };
@@ -6,14 +7,14 @@ use std::{
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
-    layout::{Constraint, Direction, Layout},
-    style::Stylize,
+    layout::{self, Constraint, Direction, Layout},
+    style::{Color, Style, Stylize},
     text::Line,
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Sparkline},
 };
 use vcd::{ScopeItem, Value};
 
-use crate::{Module, Signal};
+use crate::{Module, Signal, signal::vector_to_base_10};
 
 use crate::signal::ValueType;
 
@@ -25,6 +26,8 @@ enum AppMode {
 
 pub struct App {
     module_root: Module,
+    time_max: u64,
+    time_split: u64,
 
     mode: AppMode,
 }
@@ -80,9 +83,12 @@ fn parse_files(file_name: String) -> io::Result<Module> {
 impl App {
     pub fn default() -> io::Result<Self> {
         let module_root = parse_files(String::from("./src/test_1.vcd"))?;
+        let time_max = module_root.max_time();
         Ok(Self {
             mode: AppMode::Run,
             module_root,
+            time_max,
+            time_split: 1,
         })
     }
 
@@ -102,11 +108,22 @@ impl App {
         let layouts = Layout::default()
             .direction(Direction::Horizontal)
             .margin(2)
-            .constraints([Constraint::Fill(3), Constraint::Fill(7)].as_ref())
+            .constraints([Constraint::Fill(1), Constraint::Fill(9)].as_ref())
             .split(frame.area());
 
-        let signals = Paragraph::new(format!("{}", self.module_root))
-            .block(Block::default().borders(Borders::ALL).title("Signals"));
+        let signal_vec = self.module_root.get_signals();
+
+        let signals = Paragraph::new(
+            signal_vec
+                .iter()
+                .map(|x| x.output_name())
+                .collect::<Vec<String>>()
+                .join("\n"),
+        )
+        .block(Block::default().borders(Borders::ALL).title("Signals"));
+
+        // let signals = Paragraph::new(format!("{}", self.module_root))
+        //     .block(Block::default().borders(Borders::ALL).title("Signals"));
         frame.render_widget(signals, layouts[0]);
 
         // let waveform = Block::new().borders(Borders::ALL).title("Waveform");
@@ -132,13 +149,86 @@ impl App {
         // ];
         // let RISING_EDGE = format!("{}{}", Low_line, Combining_long_vertical_line_overlay);
         // let FALLING_EDGE = format!("{}{}", High_line, Combining_long_vertical_line_overlay);
-        let wave_line = Line::from(
-            "__________\u{20D2}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}",
-        );
-        let waveform = Paragraph::new(wave_line)
-            .block(Block::default().borders(Borders::ALL).title("Waveform"));
+        // let wave_line = Line::from(
+        //     "__________\u{20D2}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{20D2}",
+        // );
+        // let waveform = Paragraph::new(wave_line)
+        //     .block(Block::default().borders(Borders::ALL).title("Waveform"));
 
-        frame.render_widget(waveform, layouts[1]);
+        let events =
+            Layout::vertical(vec![Constraint::Fill(1); signal_vec.len() * 2]).split(layouts[1]);
+
+        let base: u64 = 2;
+
+        for (index, signal) in signal_vec.iter().enumerate() {
+            let single_event: Vec<Option<u64>> = signal
+                .event_arr_in_range(
+                    (
+                        0,
+                        self.time_max / base.pow(self.time_split.try_into().unwrap()),
+                    ),
+                    self.time_max / base.pow(self.time_split.try_into().unwrap()) / 100,
+                )
+                .iter()
+                .map(|x| match x {
+                    ValueType::Value(value) => match value {
+                        Value::V0 => Some(0),
+                        Value::V1 => Some(1),
+                        _ => None,
+                    },
+                    ValueType::Vector(vector) => vector_to_base_10(vector),
+                })
+                .collect::<Vec<Option<u64>>>();
+
+            let par = Paragraph::new(
+                single_event
+                    .iter()
+                    .map(|x| match x {
+                        Some(n) => format!("{}", n),
+                        _ => "x".to_string(),
+                    })
+                    .collect::<Vec<String>>()
+                    .join(", "),
+            );
+
+            // let test_data = vec![1, 2, 3, 4];
+
+            // let sparkline = Sparkline::default()
+            //     .block(
+            //         Block::default()
+            //             .borders(Borders::ALL)
+            //             .title(signal.output_name()),
+            //     )
+            //     .absent_value_style(Style::default().fg(Color::Red))
+            //     .data(&single_event);
+            // .data(&test_data);
+
+            frame.render_widget(par, events[index * 2]);
+            // frame.render_widget(sparkline, events[index * 2 + 1]);
+        }
+
+        // let waveform = Paragraph::new(
+        //     signal_vec
+        //         .iter()
+        //         .map(|x| {
+        //             let event_arr = x
+        //                 .event_arr_in_range(
+        //                     (
+        //                         0,
+        //                         self.time_max / base.pow(self.time_split.try_into().unwrap()),
+        //                     ),
+        //                     self.time_max / base.pow(self.time_split.try_into().unwrap()) / 100,
+        //                 )
+        //                 .iter()
+        //                 .map(|x| vector_to_base_10(x))
+        //                 .collect();
+        //         })
+        //         .collect::<Vec<String>>()
+        //         .join("\n"),
+        // )
+        // .block(Block::default().borders(Borders::ALL).title("Waveform"));
+
+        // frame.render_widget(waveform, layouts[1]);
     }
 
     fn handle_key_event(&mut self, key_event: event::KeyEvent) {
@@ -146,6 +236,13 @@ impl App {
             AppMode::Run => match key_event.code {
                 KeyCode::Char('q') => {
                     self.mode = AppMode::Exit;
+                }
+                KeyCode::Char('=') => {
+                    self.time_split += 1;
+                }
+                KeyCode::Char('-') => {
+                    // self.time_split -= 1;
+                    self.time_split = max(self.time_split - 1, 1)
                 }
                 _ => {}
             },

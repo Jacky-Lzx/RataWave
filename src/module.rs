@@ -73,4 +73,34 @@ impl Module {
             .iter_mut()
             .for_each(|x| x.add_event(id, timestamp, value.clone()));
     }
+
+    pub fn get_signals(&self) -> Vec<&Signal> {
+        let mut signal_vec: Vec<&Signal> = self.signals.iter().map(|x| x).collect();
+
+        self.submodules
+            .iter()
+            .for_each(|x| signal_vec.extend(x.get_signals()));
+
+        signal_vec
+    }
+
+    pub fn max_time(&self) -> u64 {
+        let mut max_time = 0;
+        self.signals.iter().for_each(|x| {
+            if let Some(time) = x.events.last() {
+                if time.0 > max_time {
+                    max_time = time.0;
+                }
+            }
+        });
+
+        self.submodules.iter().for_each(|x| {
+            let time = x.max_time();
+            if time > max_time {
+                max_time = time;
+            }
+        });
+
+        max_time
+    }
 }
