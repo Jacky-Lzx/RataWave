@@ -3,15 +3,34 @@ use std::fmt::Display;
 
 use vcd::{IdCode, Value, Var, Vector};
 
+/// Type of the signal
+/// - `Value`: the signal has only one bit
+/// - `Vector`: the signal has multiple bits
 #[derive(Debug, Clone)]
 pub enum ValueType {
     Value(Value),
     Vector(Vector),
 }
 
+/// For one-bit signal, the waveform is represented in two lines.
+/// `RISING_EDGE` consists of the characters for the first and second line, respectively.
+/// It looks as follows
+/// ```text
+///       ┌
+///       ┘
+/// ```
 pub const RISING_EDGE: (&str, &str) = ("┌", "┘");
+/// For one-bit signal, the waveform is represented in two lines.
+/// `FALLING_EDGE` consists of the characters for the first and second line, respectively.
+/// It looks as follows
+/// ```text
+///       ┐
+///       └
+/// ```
 pub const FALLING_EDGE: (&str, &str) = ("┐", "└");
 
+/// Convert a `Vector` value to its decimal value
+/// Return None if the vector contains `x` or `z`
 pub fn vector_to_base_10(vector: &Vector) -> Option<u64> {
     vector.iter().try_fold(0, |acc, value| match value {
         Value::V0 => Some(acc * 2),

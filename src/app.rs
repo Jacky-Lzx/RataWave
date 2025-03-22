@@ -14,7 +14,10 @@ use ratatui::{
 };
 use vcd::{ScopeItem, Value};
 
-use crate::{Module, Signal, signal::vector_to_base_10};
+use crate::{
+    Module, Signal,
+    signal::{FALLING_EDGE, RISING_EDGE, vector_to_base_10},
+};
 
 use crate::signal::ValueType;
 
@@ -126,35 +129,6 @@ impl App {
         //     .block(Block::default().borders(Borders::ALL).title("Signals"));
         frame.render_widget(signals, layouts[0]);
 
-        // let waveform = Block::new().borders(Borders::ALL).title("Waveform");
-        // const Low_line: &str = "_";
-        // const Combining_Low_line: &str = "\u{0332}";
-        // const FULLWIDTH_Low_line: &str = "\u{FF3F}";
-        // const High_line: &str = "\u{0305}";
-        // const Combining_overline: &str = "\u{203E}";
-        // const Vertical: &str = "\u{20D2}";
-        // const Combining_long_vertical_line_overlay: &str = "\u{20D2}";
-        // const Vertical_line: &str = "\u{007C}";
-        // const Modifier_letter_extra_low_tone_bar: &str = "\u{02E9}";
-        // let symbols = vec![
-        //     Low_line,
-        //     Combining_Low_line,
-        //     FULLWIDTH_Low_line,
-        //     High_line,
-        //     Combining_overline,
-        //     Vertical,
-        //     Combining_long_vertical_line_overlay,
-        //     Vertical_line,
-        //     Modifier_letter_extra_low_tone_bar,
-        // ];
-        // let RISING_EDGE = format!("{}{}", Low_line, Combining_long_vertical_line_overlay);
-        // let FALLING_EDGE = format!("{}{}", High_line, Combining_long_vertical_line_overlay);
-        // let wave_line = Line::from(
-        //     "__________\u{20D2}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{0305}\u{20D2}",
-        // );
-        // let waveform = Paragraph::new(wave_line)
-        //     .block(Block::default().borders(Borders::ALL).title("Waveform"));
-
         let events =
             Layout::vertical(vec![Constraint::Fill(1); signal_vec.len() * 2]).split(layouts[1]);
 
@@ -188,23 +162,15 @@ impl App {
                         _ => "x".to_string(),
                     })
                     .collect::<Vec<String>>()
-                    .join(", "),
+                    .join(""),
             );
 
             // let test_data = vec![1, 2, 3, 4];
 
-            // let sparkline = Sparkline::default()
-            //     .block(
-            //         Block::default()
-            //             .borders(Borders::ALL)
-            //             .title(signal.output_name()),
-            //     )
-            //     .absent_value_style(Style::default().fg(Color::Red))
-            //     .data(&single_event);
-            // .data(&test_data);
+            let sparkline = Paragraph::new(self.get_lines_from_a_signal(signal));
 
             frame.render_widget(par, events[index * 2]);
-            // frame.render_widget(sparkline, events[index * 2 + 1]);
+            frame.render_widget(sparkline, events[index * 2 + 1]);
         }
 
         // let waveform = Paragraph::new(
@@ -248,6 +214,63 @@ impl App {
             },
             _ => {}
         }
+    }
+
+    fn get_lines_from_a_signal(&self, signal: &Signal) -> Vec<Line> {
+        let base: u64 = 2;
+
+        let single_event: Vec<Option<u64>> = signal
+            .event_arr_in_range(
+                (
+                    0,
+                    self.time_max / base.pow(self.time_split.try_into().unwrap()),
+                ),
+                self.time_max / base.pow(self.time_split.try_into().unwrap()) / 100,
+            )
+            .iter()
+            .map(|x| match x {
+                ValueType::Value(value) => match value {
+                    Value::V0 => Some(0),
+                    Value::V1 => Some(1),
+                    _ => None,
+                },
+                ValueType::Vector(vector) => vector_to_base_10(vector),
+            })
+            .collect::<Vec<Option<u64>>>();
+
+        if single_event
+            .iter()
+            .filter(|x| x.is_some_and(|x| x > 1))
+            .count()
+            != 0
+        {
+            return vec![Line::from("Multi-bit signal")];
+        }
+
+        let lines =
+            single_event
+                .windows(2)
+                .fold(("".to_string(), "".to_string()), |lines, window| {
+                    let first = window[0];
+                    let second = window[1];
+
+                    if first == second {
+                        if first == Some(1) {
+                            return (lines.0.to_string() + "─", lines.1.to_string() + " ");
+                        } else {
+                            // first == 0
+                            return (lines.0.to_string() + " ", lines.1.to_string() + "─");
+                        }
+                    } else {
+                        if second == Some(1) {
+                            return (lines.0 + RISING_EDGE.0, lines.1 + RISING_EDGE.1);
+                        } else {
+                            return (lines.0 + FALLING_EDGE.0, lines.1 + FALLING_EDGE.1);
+                        }
+                    }
+                });
+
+        vec![Line::from(lines.0), Line::from(lines.1)]
     }
 }
 
