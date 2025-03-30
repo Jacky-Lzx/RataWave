@@ -136,7 +136,7 @@ impl App {
 
         for (index, signal) in signal_vec.iter().enumerate() {
             let single_event: Vec<Option<u64>> = signal
-                .event_arr_in_range(
+                .events_arr_in_range(
                     (
                         0,
                         self.time_max / base.pow(self.time_split.try_into().unwrap()),
@@ -220,7 +220,7 @@ impl App {
         let base: u64 = 2;
 
         let single_event: Vec<Option<u64>> = signal
-            .event_arr_in_range(
+            .events_arr_in_range(
                 (
                     0,
                     self.time_max / base.pow(self.time_split.try_into().unwrap()),
@@ -244,7 +244,10 @@ impl App {
             .count()
             != 0
         {
-            return vec![Line::from("Multi-bit signal")];
+            return vec![
+                Line::from("Multi-bit signal: ⟍⟋"),
+                Line::from("Multi-bit signal: ⟋⟍"),
+            ];
         }
 
         let lines =

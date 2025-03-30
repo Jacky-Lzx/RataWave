@@ -1,14 +1,11 @@
-// use std::io;
+use std::io;
 mod module;
 pub use module::Module;
-
 mod app;
 pub use app::App;
 
 mod signal;
 pub use signal::Signal;
-
-use std::io;
 
 fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();

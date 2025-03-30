@@ -94,7 +94,10 @@ impl Signal {
     pub fn output_events(&self) -> String {
         format!("{:?}", self.events)
     }
-    pub fn output_events_in_range(&self, time_range: (u64, u64)) -> String {
+
+    /// Output a string showing events in the given time range
+    /// - `time_range` - \[start_time, end_time\] the given time range
+    pub fn events_str_in_range(&self, time_range: (u64, u64)) -> String {
         self.events
             .iter()
             .fold(String::new(), |acc, (time, value)| {
@@ -104,18 +107,12 @@ impl Signal {
                     acc
                 }
             })
-        // format!("{:?}", self.events)
     }
-    pub fn event_arr_in_range(&self, time_range: (u64, u64), time_scale: u64) -> Vec<&ValueType> {
-        // self.events
-        //     .iter()
-        //     .fold(String::new(), |acc, (time, value)| {
-        //         if time_range.0 <= *time && *time <= time_range.1 {
-        //             format!("{}({:?}), ", acc, (time, value))
-        //         } else {
-        //             acc
-        //         }
-        //     })
+
+    /// Output a vector containing values in each time in the given time range
+    /// - `time_range` - \[start_time, end_time\] the given time range
+    /// - `time_scale` - the time scale that divides the time range into several intervals
+    pub fn events_arr_in_range(&self, time_range: (u64, u64), time_scale: u64) -> Vec<&ValueType> {
         let arr_size = (time_range.1 - time_range.0).div_ceil(time_scale) as usize;
         let mut event_arr = vec![&self.events.first().unwrap().1; arr_size];
         let mut last_index = 0;
