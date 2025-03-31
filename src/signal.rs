@@ -96,12 +96,15 @@ impl Signal {
     }
 
     /// Output a string showing events in the given time range
-    /// - `time_range` - \[start_time, end_time\] the given time range
-    pub fn events_str_in_range(&self, time_range: (u64, u64)) -> String {
+    /// - `time_start` - the start time
+    /// - `time_step` - the minimal time step
+    /// - `arr_size` - the size of the final array
+    pub fn events_str_in_range(&self, time_start: u64, time_step: u64, arr_size: usize) -> String {
+        let time_end = time_start + time_step * arr_size as u64;
         self.events
             .iter()
             .fold(String::new(), |acc, (time, value)| {
-                if time_range.0 <= *time && *time <= time_range.1 {
+                if time_start <= *time && *time <= time_end {
                     format!("{}({:?}), ", acc, (time, value))
                 } else {
                     acc
@@ -110,24 +113,19 @@ impl Signal {
     }
 
     /// Output a vector containing values in each time in the given time range
-    /// - `time_range` - \[start_time, end_time\] the given time range
+    /// - `time_start` - the start time
     /// - `time_step` - the minimal time step
+    /// - `arr_size` - the size of the final array
     pub fn events_arr_in_range(
         &self,
         time_start: u64,
         time_step: u64,
         arr_size: usize,
     ) -> Vec<&ValueType> {
-        // let arr_size = (time_range.1 - time_range.0).div_ceil(time_step) as usize;
         let mut event_arr = vec![&self.events.first().unwrap().1; arr_size];
-        // let mut last_index = 0;
-        // let mut last_value = &self.events.first().unwrap().1;
         let mut event_index = 0;
 
-        // println!("{:?}", self.events);
-
         for (i, element) in event_arr.iter_mut().enumerate() {
-            // *element = &self.events.first().unwrap().1;
             let time = time_start + (i as u64) * time_step;
             if self.events[event_index].0 > time {
                 assert!(self.events[event_index - 1].0 <= time);
@@ -140,27 +138,6 @@ impl Signal {
                 }
             }
         }
-
-        // for event in self.events.iter() {
-        //     let event_time = event.0;
-        //     if event_time >= time_range.1 {
-        //         break;
-        //     }
-        //
-        //     if event_time >= time_range.0 {
-        //         let value = &event.1;
-        //         let index = (event_time - time_range.0).div_ceil(time_step) as usize;
-        //         // if time_range.0 <= event_time && event_time <= time_range.1 {
-        //         //     event_arr[index] = &value;
-        //         // }
-        //         for i in last_index..index {
-        //             event_arr[i] = &last_value;
-        //         }
-        //
-        //         last_value = value;
-        //         last_index = index;
-        //     }
-        // }
 
         event_arr
     }
