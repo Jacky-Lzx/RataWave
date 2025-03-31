@@ -4,6 +4,7 @@ use std::{
     io::{self, BufReader},
 };
 
+use cli_log::debug;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
@@ -86,6 +87,7 @@ fn parse_files(file_name: String) -> io::Result<Module> {
 impl App {
     pub fn default() -> io::Result<Self> {
         let module_root = parse_files(String::from("./src/test_1.vcd"))?;
+        debug!("{}", module_root);
         Ok(Self {
             mode: AppMode::Run,
             module_root,
@@ -93,6 +95,14 @@ impl App {
             time_step: 1000,
             arr_size: 100,
         })
+    }
+
+    fn change_time_step(&mut self, is_increase: bool) {
+        if is_increase {
+            self.time_step = max(self.time_step / 10, 10);
+        } else {
+            self.time_step *= 10;
+        }
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -145,30 +155,11 @@ impl App {
 
         self.arr_size = events[0].width as usize;
 
-        // let time_str = format!(
-        //     "{}",
-        //     "_".repeat(100),
-        //     // width = self.time_max / base.pow(self.time_split.try_into().unwrap())
-        // );
         let mut time_stamp_str = String::from("");
 
         // Show stamps after each 10 steps
         let show_split = 10;
 
-        // let max_time = self.time_end / base.pow(self.time_split.try_into().unwrap());
-        //
-        // for index in 0..show_split {
-        //     let mut time_stamp = format!(
-        //         "{}ns",
-        //         self.time_start + (self.arr_size / show_split * index) as u64 * self.time_step
-        //     );
-        //     if time_stamp.len() > 10 {
-        //         time_stamp = time_stamp[0..10].to_string();
-        //     } else {
-        //         time_stamp.push_str(" ".repeat(10 - time_stamp.len()).as_str());
-        //     }
-        //     time_stamp_str.push_str(&time_stamp);
-        // }
         let mut time_stamp_graph = String::from("");
 
         let mut stamp_index = 0;
@@ -262,10 +253,10 @@ impl App {
                     self.mode = AppMode::Exit;
                 }
                 KeyCode::Char('=') => {
-                    self.time_step = max(self.time_step / 2, 10);
+                    self.change_time_step(true);
                 }
                 KeyCode::Char('-') => {
-                    self.time_step *= 2;
+                    self.change_time_step(false);
                 }
                 KeyCode::Char('h') => {
                     self.time_start = max(
@@ -283,59 +274,56 @@ impl App {
     }
 
     fn get_lines_from_a_signal(&self, signal: &Signal) -> Vec<Line> {
-        let single_event: Vec<Option<u64>> = signal
+        let lines = signal
             .events_arr_in_range(self.time_start, self.time_step, self.arr_size)
-            .iter()
-            .map(|x| match x {
-                ValueType::Value(value) => match value {
-                    Value::V0 => Some(0),
-                    Value::V1 => Some(1),
-                    _ => None,
-                },
-                ValueType::Vector(vector) => vector_to_base_10(vector),
-            })
-            .collect::<Vec<Option<u64>>>();
+            .windows(2)
+            .fold(("".to_string(), "".to_string()), |lines, window| {
+                let first = window[0];
+                let second = window[1];
 
-        if single_event
-            .iter()
-            .filter(|x| x.is_some_and(|x| x > 1))
-            .count()
-            != 0
-        {
-            return vec![
-                Line::from("Multi-bit signal: ⟍⟋"),
-                Line::from("Multi-bit signal: ⟋⟍"),
-            ];
-        }
+                if let ValueType::Vector(_) = first {
+                    return ("multiple bits".to_string(), "multiple bits".to_string());
+                };
 
-        let lines =
-            single_event
-                .windows(2)
-                .fold(("".to_string(), "".to_string()), |lines, window| {
-                    let first = window[0];
-                    let second = window[1];
+                assert!(matches!(first, ValueType::Value(_)));
+                assert!(matches!(second, ValueType::Value(_)));
 
-                    if first == second {
-                        if first == Some(1) {
+                let ValueType::Value(first) = first else {
+                    todo!()
+                };
+                let ValueType::Value(second) = second else {
+                    todo!()
+                };
+                if first == second {
+                    match first {
+                        Value::V1 => {
                             return (lines.0.to_string() + "─", lines.1.to_string() + " ");
-                        } else {
-                            // first == 0
+                        }
+                        Value::V0 => {
                             return (lines.0.to_string() + " ", lines.1.to_string() + "─");
                         }
-                    } else {
-                        if second == Some(1) {
+                        Value::X => return (lines.0.to_string() + "x", lines.1.to_string() + "x"),
+                        Value::Z => return (lines.0.to_string() + "z", lines.1.to_string() + "z"),
+                    }
+                } else {
+                    match second {
+                        Value::V1 => {
                             return (
                                 lines.0 + RISING_EDGE.first_line,
                                 lines.1 + RISING_EDGE.second_line,
                             );
-                        } else {
+                        }
+                        Value::V0 => {
                             return (
                                 lines.0 + FALLING_EDGE.first_line,
                                 lines.1 + FALLING_EDGE.second_line,
                             );
                         }
+                        Value::X => return (lines.0.to_string() + "x", lines.1.to_string() + "x"),
+                        Value::Z => return (lines.0.to_string() + "z", lines.1.to_string() + "z"),
                     }
-                });
+                }
+            });
 
         vec![Line::from(lines.0), Line::from(lines.1)]
     }
