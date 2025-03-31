@@ -125,14 +125,50 @@ impl App {
         )
         .block(Block::default().borders(Borders::ALL).title("Signals"));
 
+        let signal_layouts = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Fill(1), Constraint::Fill(9)].as_ref())
+            .split(layouts[1]);
+
         // let signals = Paragraph::new(format!("{}", self.module_root))
         //     .block(Block::default().borders(Borders::ALL).title("Signals"));
         frame.render_widget(signals, layouts[0]);
 
-        let events =
-            Layout::vertical(vec![Constraint::Fill(1); signal_vec.len() * 2]).split(layouts[1]);
+        let events = Layout::vertical(vec![Constraint::Fill(1); signal_vec.len() * 2])
+            .split(signal_layouts[1]);
 
         let base: u64 = 2;
+
+        // let time_str = format!(
+        //     "{}",
+        //     "_".repeat(100),
+        //     // width = self.time_max / base.pow(self.time_split.try_into().unwrap())
+        // );
+        let mut time_str = String::from("");
+
+        let show_split = 10;
+
+        let max_time = self.time_max / base.pow(self.time_split.try_into().unwrap());
+
+        for index in 0..show_split {
+            let mut time_stamp = format!(
+                "{:.2}ns",
+                max_time as f64 / show_split as f64 * index as f64
+            );
+            if time_stamp.len() > 10 {
+                time_stamp = time_stamp[0..10].to_string();
+            } else {
+                time_stamp.push_str("_".repeat(10 - time_stamp.len()).as_str());
+            }
+            time_str.push_str(&time_stamp);
+        }
+
+        let time_indicator_str = format!("{}", format!("|{}", " ".repeat(9)).repeat(10));
+
+        let time_show = Paragraph::new(vec![Line::from(time_str), Line::from(time_indicator_str)])
+            .block(Block::default().borders(Borders::ALL));
+
+        frame.render_widget(time_show, signal_layouts[0]);
 
         for (index, signal) in signal_vec.iter().enumerate() {
             let single_event: Vec<Option<u64>> = signal
