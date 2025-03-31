@@ -4,7 +4,7 @@ use std::fmt::Display;
 use crate::signal::Signal;
 use crate::signal::ValueType;
 
-use vcd::{IdCode, Scope, ScopeItem, ScopeType, Value};
+use vcd::{IdCode, Scope, ScopeItem, ScopeType};
 
 pub struct Module {
     pub(crate) name: String,

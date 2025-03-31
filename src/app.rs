@@ -7,10 +7,9 @@ use std::{
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
-    layout::{self, Constraint, Direction, Layout},
-    style::{Color, Style, Stylize},
+    layout::{Constraint, Direction, Layout},
     text::Line,
-    widgets::{Block, Borders, Paragraph, Sparkline},
+    widgets::{Block, Borders, Paragraph},
 };
 use vcd::{ScopeItem, Value};
 
@@ -29,8 +28,9 @@ enum AppMode {
 
 pub struct App {
     module_root: Module,
-    time_max: u64,
-    time_split: u64,
+    time_start: u64,
+    time_step: u64,
+    arr_size: usize,
 
     mode: AppMode,
 }
@@ -86,12 +86,12 @@ fn parse_files(file_name: String) -> io::Result<Module> {
 impl App {
     pub fn default() -> io::Result<Self> {
         let module_root = parse_files(String::from("./src/test_1.vcd"))?;
-        let time_max = module_root.max_time();
         Ok(Self {
             mode: AppMode::Run,
             module_root,
-            time_max,
-            time_split: 1,
+            time_start: 0,
+            time_step: 10,
+            arr_size: 100,
         })
     }
 
@@ -127,7 +127,7 @@ impl App {
 
         let signal_layouts = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Fill(1), Constraint::Fill(9)].as_ref())
+            .constraints([Constraint::Length(2), Constraint::Min(0)].as_ref())
             .split(layouts[1]);
 
         // let signals = Paragraph::new(format!("{}", self.module_root))
@@ -136,8 +136,6 @@ impl App {
 
         let events = Layout::vertical(vec![Constraint::Fill(1); signal_vec.len() * 2])
             .split(signal_layouts[1]);
-
-        let base: u64 = 2;
 
         // let time_str = format!(
         //     "{}",
@@ -148,37 +146,31 @@ impl App {
 
         let show_split = 10;
 
-        let max_time = self.time_max / base.pow(self.time_split.try_into().unwrap());
+        // let max_time = self.time_end / base.pow(self.time_split.try_into().unwrap());
 
         for index in 0..show_split {
             let mut time_stamp = format!(
-                "{:.2}ns",
-                max_time as f64 / show_split as f64 * index as f64
+                "{}ns",
+                self.time_start + (self.arr_size / show_split * index) as u64 * self.time_step
             );
             if time_stamp.len() > 10 {
                 time_stamp = time_stamp[0..10].to_string();
             } else {
-                time_stamp.push_str("_".repeat(10 - time_stamp.len()).as_str());
+                time_stamp.push_str(" ".repeat(10 - time_stamp.len()).as_str());
             }
             time_str.push_str(&time_stamp);
         }
 
         let time_indicator_str = format!("{}", format!("|{}", " ".repeat(9)).repeat(10));
 
-        let time_show = Paragraph::new(vec![Line::from(time_str), Line::from(time_indicator_str)])
-            .block(Block::default().borders(Borders::ALL));
+        let time_show = Paragraph::new(vec![Line::from(time_str), Line::from(time_indicator_str)]);
+        // .block(Block::default().borders(Borders::ALL));
 
         frame.render_widget(time_show, signal_layouts[0]);
 
         for (index, signal) in signal_vec.iter().enumerate() {
             let single_event: Vec<Option<u64>> = signal
-                .events_arr_in_range(
-                    (
-                        0,
-                        self.time_max / base.pow(self.time_split.try_into().unwrap()),
-                    ),
-                    self.time_max / base.pow(self.time_split.try_into().unwrap()) / 100,
-                )
+                .events_arr_in_range(self.time_start, self.time_step, self.arr_size)
                 .iter()
                 .map(|x| match x {
                     ValueType::Value(value) => match value {
@@ -240,11 +232,19 @@ impl App {
                     self.mode = AppMode::Exit;
                 }
                 KeyCode::Char('=') => {
-                    self.time_split += 1;
+                    self.time_step = max(self.time_step / 2, 10);
                 }
                 KeyCode::Char('-') => {
-                    // self.time_split -= 1;
-                    self.time_split = max(self.time_split - 1, 1)
+                    self.time_step *= 2;
+                }
+                KeyCode::Char('h') => {
+                    self.time_start = max(
+                        0,
+                        self.time_start as i64 - self.arr_size as i64 / 2 * self.time_step as i64,
+                    ) as u64;
+                }
+                KeyCode::Char('l') => {
+                    self.time_start += self.arr_size as u64 / 2 * self.time_step;
                 }
                 _ => {}
             },
@@ -253,16 +253,8 @@ impl App {
     }
 
     fn get_lines_from_a_signal(&self, signal: &Signal) -> Vec<Line> {
-        let base: u64 = 2;
-
         let single_event: Vec<Option<u64>> = signal
-            .events_arr_in_range(
-                (
-                    0,
-                    self.time_max / base.pow(self.time_split.try_into().unwrap()),
-                ),
-                self.time_max / base.pow(self.time_split.try_into().unwrap()) / 100,
-            )
+            .events_arr_in_range(self.time_start, self.time_step, self.arr_size)
             .iter()
             .map(|x| match x {
                 ValueType::Value(value) => match value {
