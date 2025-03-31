@@ -294,9 +294,15 @@ impl App {
                         }
                     } else {
                         if second == Some(1) {
-                            return (lines.0 + RISING_EDGE.0, lines.1 + RISING_EDGE.1);
+                            return (
+                                lines.0 + RISING_EDGE.first_line,
+                                lines.1 + RISING_EDGE.second_line,
+                            );
                         } else {
-                            return (lines.0 + FALLING_EDGE.0, lines.1 + FALLING_EDGE.1);
+                            return (
+                                lines.0 + FALLING_EDGE.first_line,
+                                lines.1 + FALLING_EDGE.second_line,
+                            );
                         }
                     }
                 });
