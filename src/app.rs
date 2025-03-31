@@ -1,5 +1,5 @@
 use std::{
-    cmp::max,
+    cmp::{max, min},
     fs::File,
     io::{self, BufReader},
 };
@@ -90,7 +90,7 @@ impl App {
             mode: AppMode::Run,
             module_root,
             time_start: 0,
-            time_step: 10,
+            time_step: 1000,
             arr_size: 100,
         })
     }
@@ -107,7 +107,7 @@ impl App {
         Ok(())
     }
 
-    fn draw(&self, frame: &mut ratatui::Frame<'_>) {
+    fn draw(&mut self, frame: &mut ratatui::Frame<'_>) {
         let layouts = Layout::default()
             .direction(Direction::Horizontal)
             .margin(2)
@@ -123,47 +123,77 @@ impl App {
                 .collect::<Vec<String>>()
                 .join("\n"),
         )
-        .block(Block::default().borders(Borders::ALL).title("Signals"));
+        .block(Block::default().borders(Borders::ALL).title("Names"));
+
+        let name_layouts = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(2), Constraint::Min(0)].as_ref())
+            .split(layouts[0]);
+
+        let redundant = Paragraph::new("RataWave");
+
+        frame.render_widget(redundant, name_layouts[0]);
+        frame.render_widget(signals, name_layouts[1]);
 
         let signal_layouts = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(2), Constraint::Min(0)].as_ref())
             .split(layouts[1]);
 
-        // let signals = Paragraph::new(format!("{}", self.module_root))
-        //     .block(Block::default().borders(Borders::ALL).title("Signals"));
-        frame.render_widget(signals, layouts[0]);
-
         let events = Layout::vertical(vec![Constraint::Fill(1); signal_vec.len() * 2])
             .split(signal_layouts[1]);
+
+        self.arr_size = events[0].width as usize;
 
         // let time_str = format!(
         //     "{}",
         //     "_".repeat(100),
         //     // width = self.time_max / base.pow(self.time_split.try_into().unwrap())
         // );
-        let mut time_str = String::from("");
+        let mut time_stamp_str = String::from("");
 
+        // Show stamps after each 10 steps
         let show_split = 10;
 
         // let max_time = self.time_end / base.pow(self.time_split.try_into().unwrap());
+        //
+        // for index in 0..show_split {
+        //     let mut time_stamp = format!(
+        //         "{}ns",
+        //         self.time_start + (self.arr_size / show_split * index) as u64 * self.time_step
+        //     );
+        //     if time_stamp.len() > 10 {
+        //         time_stamp = time_stamp[0..10].to_string();
+        //     } else {
+        //         time_stamp.push_str(" ".repeat(10 - time_stamp.len()).as_str());
+        //     }
+        //     time_stamp_str.push_str(&time_stamp);
+        // }
+        let mut time_stamp_graph = String::from("");
 
-        for index in 0..show_split {
+        let mut stamp_index = 0;
+        while stamp_index < self.arr_size {
             let mut time_stamp = format!(
                 "{}ns",
-                self.time_start + (self.arr_size / show_split * index) as u64 * self.time_step
+                self.time_start + stamp_index as u64 * self.time_step
             );
-            if time_stamp.len() > 10 {
-                time_stamp = time_stamp[0..10].to_string();
+            let strip_len = min(10, self.arr_size - stamp_index);
+            if time_stamp.len() > strip_len {
+                time_stamp = time_stamp[0..strip_len].to_string();
             } else {
-                time_stamp.push_str(" ".repeat(10 - time_stamp.len()).as_str());
+                time_stamp.push_str(" ".repeat(strip_len - time_stamp.len()).as_str());
             }
-            time_str.push_str(&time_stamp);
+            time_stamp_str.push_str(&time_stamp);
+
+            time_stamp_graph.push_str(format!("|{}", " ".repeat(strip_len - 1)).as_str());
+
+            stamp_index += show_split;
         }
 
-        let time_indicator_str = format!("{}", format!("|{}", " ".repeat(9)).repeat(10));
-
-        let time_show = Paragraph::new(vec![Line::from(time_str), Line::from(time_indicator_str)]);
+        let time_show = Paragraph::new(vec![
+            Line::from(time_stamp_str),
+            Line::from(time_stamp_graph),
+        ]);
         // .block(Block::default().borders(Borders::ALL));
 
         frame.render_widget(time_show, signal_layouts[0]);
