@@ -1,16 +1,61 @@
-use core::fmt;
-use std::fmt::Display;
+use core::{fmt, panic};
+use std::fmt::{Debug, Display};
 
+use cli_log::debug;
+use crossterm::event;
 use vcd::{IdCode, Value, Var, Vector};
 
 /// Type of the signal
 /// - `Value`: the signal has only one bit
 /// - `Vector`: the signal has multiple bits
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ValueType {
     Value(Value),
     Vector(Vector),
 }
+
+#[derive(Clone, Debug)]
+pub enum ValueDisplayEvent {
+    ChangeEvent(Value),
+    MultipleEvent,
+    Stay(Value),
+}
+
+#[derive(Clone, Debug)]
+pub enum VectorDisplayEvent {
+    ChangeEvent(Vector),
+    MultipleEvent,
+    Stay(Vector),
+}
+
+#[derive(Clone, Debug)]
+pub enum DisplayEvent {
+    Value(ValueDisplayEvent),
+    Vector(VectorDisplayEvent),
+}
+
+impl PartialEq<ValueType> for DisplayEvent {
+    fn eq(&self, other: &ValueType) -> bool {
+        match other {
+            ValueType::Value(value) => match self {
+                DisplayEvent::Value(ValueDisplayEvent::Stay(v)) => *v == *value,
+                DisplayEvent::Value(ValueDisplayEvent::ChangeEvent(v)) => *v == *value,
+                _ => false,
+            },
+            ValueType::Vector(vector) => match self {
+                DisplayEvent::Vector(VectorDisplayEvent::Stay(v)) => *v == *vector,
+                DisplayEvent::Vector(VectorDisplayEvent::ChangeEvent(v)) => *v == *vector,
+                _ => false,
+            },
+        }
+    }
+}
+
+// impl Debug for DisplayEvent {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         todo!()
+//     }
+// }
 
 pub struct EdgeRepresentation {
     pub first_line: &'static str,
@@ -124,7 +169,7 @@ impl Signal {
             })
     }
 
-    /// Output a vector containing values in each time in the given time range
+    /// Output a vector containing `DisplayEvents` in each time in the given time range
     /// - `time_start` - the start time
     /// - `time_step` - the minimal time step
     /// - `arr_size` - the size of the final array
@@ -133,23 +178,82 @@ impl Signal {
         time_start: u64,
         time_step: u64,
         arr_size: usize,
-    ) -> Vec<&ValueType> {
-        let mut event_arr = vec![&self.events.first().unwrap().1; arr_size];
-        let mut event_index = 0;
+    ) -> Vec<DisplayEvent> {
+        let mut event_arr = vec![DisplayEvent::Value(ValueDisplayEvent::Stay(Value::X)); arr_size];
+
+        let mut start_index = 0;
+        let mut end_index;
+        let mut last_event = DisplayEvent::Value(ValueDisplayEvent::Stay(Value::X));
 
         for (i, element) in event_arr.iter_mut().enumerate() {
-            let time = time_start + (i as u64) * time_step;
-            if self.events[event_index].0 > time {
-                assert!(self.events[event_index - 1].0 <= time);
-                *element = &self.events[event_index - 1].1;
-            } else {
-                *element = &self.events[event_index].1;
-                event_index += 1;
-                if event_index >= self.events.len() {
+            let start_time = time_start + (i as u64) * time_step;
+            while self.events[start_index].0 < start_time {
+                start_index += 1;
+                if start_index >= self.events.len() {
+                    return vec![];
+                }
+            }
+            end_index = start_index;
+
+            let end_time = start_time + time_step;
+
+            if self.events[start_index].0 >= end_time {
+                *element = match &last_event {
+                    DisplayEvent::Value(ValueDisplayEvent::ChangeEvent(value)) => {
+                        DisplayEvent::Value(ValueDisplayEvent::Stay(*value))
+                    }
+                    DisplayEvent::Vector(VectorDisplayEvent::ChangeEvent(vector)) => {
+                        DisplayEvent::Vector(VectorDisplayEvent::Stay(vector.clone()))
+                    }
+                    _ => last_event.clone(),
+                };
+                continue;
+            }
+
+            while self.events[end_index].0 < end_time {
+                end_index += 1;
+                if end_index >= self.events.len() {
                     break;
                 }
             }
+
+            if end_index - start_index == 1 {
+                let event_prev = last_event.clone();
+                *element = match self.events[start_index].1.clone() {
+                    ValueType::Value(value) => {
+                        if event_prev == self.events[start_index].1 {
+                            DisplayEvent::Value(ValueDisplayEvent::Stay(value))
+                        } else {
+                            DisplayEvent::Value(ValueDisplayEvent::ChangeEvent(value))
+                        }
+                    }
+
+                    ValueType::Vector(vector) => {
+                        if event_prev == self.events[start_index].1 {
+                            DisplayEvent::Vector(VectorDisplayEvent::Stay(vector))
+                        } else {
+                            DisplayEvent::Vector(VectorDisplayEvent::ChangeEvent(vector))
+                        }
+                    }
+                };
+                last_event = element.clone();
+            } else if end_index - start_index > 1 {
+                *element = match self.events[start_index].1 {
+                    ValueType::Value(_) => DisplayEvent::Value(ValueDisplayEvent::MultipleEvent),
+                    ValueType::Vector(_) => DisplayEvent::Vector(VectorDisplayEvent::MultipleEvent),
+                };
+                last_event = element.clone();
+            } else {
+                panic!("No events in [start_time, end_time)")
+            }
+
+            start_index = end_index;
+            if start_index >= self.events.len() {
+                break;
+            }
         }
+
+        // debug!("{:?}", event_arr);
 
         event_arr
     }

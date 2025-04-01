@@ -87,7 +87,7 @@ fn parse_files(file_name: String) -> io::Result<Module> {
 impl App {
     pub fn default() -> io::Result<Self> {
         let module_root = parse_files(String::from("./src/test_1.vcd"))?;
-        debug!("{}", module_root);
+        // debug!("{}", module_root);
         Ok(Self {
             mode: AppMode::Run,
             module_root,
@@ -190,31 +190,30 @@ impl App {
         frame.render_widget(time_show, signal_layouts[0]);
 
         for (index, signal) in signal_vec.iter().enumerate() {
-            let single_event: Vec<Option<u64>> = signal
+            let par = signal
                 .events_arr_in_range(self.time_start, self.time_step, self.arr_size)
                 .iter()
                 .map(|x| match x {
-                    ValueType::Value(value) => match value {
-                        Value::V0 => Some(0),
-                        Value::V1 => Some(1),
-                        _ => None,
-                    },
-                    ValueType::Vector(vector) => vector_to_base_10(vector),
+                    crate::signal::DisplayEvent::Value(value_display_event) => {
+                        match value_display_event {
+                            crate::signal::ValueDisplayEvent::ChangeEvent(value) => {
+                                value.to_string()
+                            }
+                            crate::signal::ValueDisplayEvent::Stay(value) => value.to_string(),
+                            _ => "T".to_string(),
+                        }
+                    }
+                    crate::signal::DisplayEvent::Vector(vector_display_event) => {
+                        match vector_display_event {
+                            crate::signal::VectorDisplayEvent::ChangeEvent(value) => {
+                                value.to_string()
+                            }
+                            crate::signal::VectorDisplayEvent::Stay(value) => value.to_string(),
+                            _ => "T".to_string(),
+                        }
+                    }
                 })
-                .collect::<Vec<Option<u64>>>();
-
-            let par = Paragraph::new(
-                single_event
-                    .iter()
-                    .map(|x| match x {
-                        Some(n) => format!("{}", n),
-                        _ => "x".to_string(),
-                    })
-                    .collect::<Vec<String>>()
-                    .join(""),
-            );
-
-            // let test_data = vec![1, 2, 3, 4];
+                .collect::<String>();
 
             let sparkline = Paragraph::new(self.get_lines_from_a_signal(signal));
 
@@ -274,56 +273,73 @@ impl App {
     }
 
     fn get_lines_from_a_signal(&self, signal: &Signal) -> Vec<Line> {
-        let lines = signal
-            .events_arr_in_range(self.time_start, self.time_step, self.arr_size)
-            .windows(2)
-            .fold(("".to_string(), "".to_string()), |lines, window| {
-                let first = window[0];
-                let second = window[1];
+        let display_event_arr =
+            signal.events_arr_in_range(self.time_start, self.time_step, self.arr_size);
 
-                if let ValueType::Vector(_) = first {
-                    return ("multiple bits".to_string(), "multiple bits".to_string());
-                };
-
-                assert!(matches!(first, ValueType::Value(_)));
-                assert!(matches!(second, ValueType::Value(_)));
-
-                let ValueType::Value(first) = first else {
-                    todo!()
-                };
-                let ValueType::Value(second) = second else {
-                    todo!()
-                };
-                if first == second {
-                    match first {
-                        Value::V1 => {
-                            return (lines.0.to_string() + "─", lines.1.to_string() + " ");
+        let lines =
+            display_event_arr
+                .iter()
+                .fold(("".to_string(), "".to_string()), |mut lines, event| {
+                    match event {
+                        crate::signal::DisplayEvent::Value(value_display_event) => {
+                            match value_display_event {
+                                crate::signal::ValueDisplayEvent::ChangeEvent(value) => match value
+                                {
+                                    Value::V1 => {
+                                        lines.0.push_str(RISING_EDGE.first_line);
+                                        lines.1.push_str(RISING_EDGE.second_line);
+                                    }
+                                    Value::V0 => {
+                                        lines.0.push_str(FALLING_EDGE.first_line);
+                                        lines.1.push_str(FALLING_EDGE.second_line);
+                                    }
+                                    Value::X => {
+                                        lines.0.push_str("x");
+                                        lines.1.push_str("x");
+                                    }
+                                    Value::Z => {
+                                        lines.0.push_str("z");
+                                        lines.1.push_str("z");
+                                    }
+                                },
+                                crate::signal::ValueDisplayEvent::MultipleEvent => {
+                                    lines.0.push_str("␩");
+                                    lines.1.push_str("␩");
+                                    // lines.0.push_str("␨");
+                                    // lines.1.push_str("␨");
+                                }
+                                crate::signal::ValueDisplayEvent::Stay(value) => match value {
+                                    Value::V1 => {
+                                        lines.0.push_str("─");
+                                        lines.1.push_str(" ");
+                                    }
+                                    Value::V0 => {
+                                        lines.0.push_str(" ");
+                                        lines.1.push_str("─");
+                                    }
+                                    Value::X => {
+                                        lines.0.push_str("x");
+                                        lines.1.push_str("x");
+                                    }
+                                    Value::Z => {
+                                        lines.0.push_str("z");
+                                        lines.1.push_str("z");
+                                    }
+                                },
+                            }
                         }
-                        Value::V0 => {
-                            return (lines.0.to_string() + " ", lines.1.to_string() + "─");
+                        crate::signal::DisplayEvent::Vector(vector_display_event) => {
+                            match vector_display_event {
+                                _ => {
+                                    lines.0.push_str("m");
+                                    lines.0.push_str("m");
+                                }
+                            }
                         }
-                        Value::X => return (lines.0.to_string() + "x", lines.1.to_string() + "x"),
-                        Value::Z => return (lines.0.to_string() + "z", lines.1.to_string() + "z"),
                     }
-                } else {
-                    match second {
-                        Value::V1 => {
-                            return (
-                                lines.0 + RISING_EDGE.first_line,
-                                lines.1 + RISING_EDGE.second_line,
-                            );
-                        }
-                        Value::V0 => {
-                            return (
-                                lines.0 + FALLING_EDGE.first_line,
-                                lines.1 + FALLING_EDGE.second_line,
-                            );
-                        }
-                        Value::X => return (lines.0.to_string() + "x", lines.1.to_string() + "x"),
-                        Value::Z => return (lines.0.to_string() + "z", lines.1.to_string() + "z"),
-                    }
-                }
-            });
+
+                    lines
+                });
 
         vec![Line::from(lines.0), Line::from(lines.1)]
     }
