@@ -1,8 +1,6 @@
 use core::{fmt, panic};
-use std::fmt::{Debug, Display};
+use std::fmt::Display;
 
-use cli_log::debug;
-use crossterm::event;
 use vcd::{IdCode, Value, Var, Vector};
 
 /// Type of the signal
@@ -179,20 +177,36 @@ impl Signal {
         time_step: u64,
         arr_size: usize,
     ) -> Vec<DisplayEvent> {
-        let mut event_arr = vec![DisplayEvent::Value(ValueDisplayEvent::Stay(Value::X)); arr_size];
-
         let mut start_index = 0;
         let mut end_index;
-        let mut last_event = DisplayEvent::Value(ValueDisplayEvent::Stay(Value::X));
+
+        while self.events[start_index].0 < time_start {
+            start_index += 1;
+            if start_index >= self.events.len() {
+                return vec![];
+            }
+        }
+
+        let mut last_event =
+            match self
+                .events
+                .get(if start_index == 0 { 0 } else { start_index - 1 })
+            {
+                Some(event) => match &event.1 {
+                    ValueType::Value(value) => {
+                        DisplayEvent::Value(ValueDisplayEvent::Stay(value.clone()))
+                    }
+                    ValueType::Vector(vector) => {
+                        DisplayEvent::Vector(VectorDisplayEvent::Stay(vector.clone()))
+                    }
+                },
+                None => DisplayEvent::Value(ValueDisplayEvent::Stay(Value::X)),
+            };
+
+        let mut event_arr = vec![last_event.clone(); arr_size];
 
         for (i, element) in event_arr.iter_mut().enumerate() {
             let start_time = time_start + (i as u64) * time_step;
-            while self.events[start_index].0 < start_time {
-                start_index += 1;
-                if start_index >= self.events.len() {
-                    return vec![];
-                }
-            }
             end_index = start_index;
 
             let end_time = start_time + time_step;

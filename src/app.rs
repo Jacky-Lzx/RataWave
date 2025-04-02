@@ -6,7 +6,7 @@ use std::{
     ops::Add,
 };
 
-use cli_log::{debug, error};
+use cli_log::debug;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
@@ -20,7 +20,7 @@ use vcd::{ScopeItem, TimescaleUnit, Value};
 
 use crate::{
     Module, Signal,
-    signal::{self, FALLING_EDGE, RISING_EDGE, vector_to_base_10},
+    signal::{self, FALLING_EDGE, RISING_EDGE},
 };
 
 use crate::signal::ValueType;
@@ -168,6 +168,26 @@ fn parse_files(file_name: String) -> io::Result<(Module, TimescaleUnit)> {
     }
 
     Ok((root, header.timescale.unwrap().1))
+}
+
+fn middle_str<'a>(length: usize, mid_str: String) -> Vec<Span<'a>> {
+    let len = mid_str.len();
+    if len > length {
+        return vec![Span::styled("␩", Style::default()); length];
+    }
+    let mut arr = vec![];
+    for _ in 0..length {
+        arr.push(Span::styled(" ", Style::default()));
+    }
+    // ␩
+    arr.splice(
+        length / 2 - len / 2..length / 2 - len / 2 + len,
+        mid_str
+            .chars()
+            .map(|x| Span::styled(x.to_string(), Style::default())),
+    );
+
+    arr
 }
 
 impl App {
@@ -332,114 +352,130 @@ impl App {
 
         let color_green = Color::from_str("#a6e3a1").unwrap();
 
-        let lines = display_event_arr
-            .iter()
-            .fold((vec![], vec![]), |mut lines, event| {
-                match event {
-                    crate::signal::DisplayEvent::Value(value_display_event) => {
-                        match value_display_event {
-                            crate::signal::ValueDisplayEvent::ChangeEvent(value) => match value {
-                                Value::V1 => {
-                                    lines.0.push(Span::styled(
-                                        RISING_EDGE.first_line,
-                                        Style::default().fg(color_green),
-                                    ));
-                                    lines.1.push(Span::styled(
-                                        RISING_EDGE.second_line,
-                                        Style::default().fg(color_green),
-                                    ));
-                                }
-                                Value::V0 => {
-                                    lines.0.push(Span::styled(
-                                        FALLING_EDGE.first_line,
-                                        Style::default().fg(color_green),
-                                    ));
-                                    lines.1.push(Span::styled(
-                                        FALLING_EDGE.second_line,
-                                        Style::default().fg(color_green),
-                                    ));
-                                }
-                                Value::X => {
-                                    lines
-                                        .0
-                                        .push(Span::styled("x", Style::default().fg(color_green)));
-                                    lines
-                                        .1
-                                        .push(Span::styled("x", Style::default().fg(color_green)));
-                                }
-                                Value::Z => {
-                                    lines
-                                        .0
-                                        .push(Span::styled("z", Style::default().fg(color_green)));
-                                    lines
-                                        .1
-                                        .push(Span::styled("z", Style::default().fg(color_green)));
-                                }
-                            },
-                            crate::signal::ValueDisplayEvent::MultipleEvent => {
-                                lines
-                                    .0
-                                    .push(Span::styled("␩", Style::default().fg(color_green)));
-                                lines
-                                    .1
-                                    .push(Span::styled("␩", Style::default().fg(color_green)));
-                                // lines.0.push("␨");
-                                // lines.1.push("␨");
-                            }
-                            crate::signal::ValueDisplayEvent::Stay(value) => match value {
-                                Value::V1 => {
-                                    lines
-                                        .0
-                                        .push(Span::styled("─", Style::default().fg(color_green)));
-                                    lines
-                                        .1
-                                        .push(Span::styled(" ", Style::default().fg(color_green)));
-                                }
-                                Value::V0 => {
-                                    lines
-                                        .0
-                                        .push(Span::styled(" ", Style::default().fg(color_green)));
-                                    lines
-                                        .1
-                                        .push(Span::styled("─", Style::default().fg(color_green)));
-                                }
-                                Value::X => {
-                                    lines
-                                        .0
-                                        .push(Span::styled("x", Style::default().fg(color_green)));
-                                    lines
-                                        .1
-                                        .push(Span::styled("x", Style::default().fg(color_green)));
-                                }
-                                Value::Z => {
-                                    lines
-                                        .0
-                                        .push(Span::styled("z", Style::default().fg(color_green)));
-                                    lines
-                                        .1
-                                        .push(Span::styled("z", Style::default().fg(color_green)));
-                                }
-                            },
-                        }
+        let mut lines = display_event_arr.iter().fold(vec![], |mut lines, event| {
+            match event {
+                crate::signal::DisplayEvent::Value(value_display_event) => {
+                    if lines.len() == 0 {
+                        lines.push(vec![]);
+                        lines.push(vec![]);
                     }
-                    crate::signal::DisplayEvent::Vector(vector_display_event) => {
-                        match vector_display_event {
-                            _ => {
-                                lines
-                                    .0
-                                    .push(Span::styled("m", Style::default().fg(color_green)));
-                                lines
-                                    .0
-                                    .push(Span::styled("m", Style::default().fg(color_green)));
-                            }
-                        }
-                    }
-                }
+                    let [mut line0, mut line1] = lines.try_into().unwrap();
 
-                lines
+                    match value_display_event {
+                        crate::signal::ValueDisplayEvent::ChangeEvent(value) => match value {
+                            Value::V1 => {
+                                line0.push(Span::styled(
+                                    RISING_EDGE.first_line,
+                                    Style::default().fg(color_green),
+                                ));
+                                line1.push(Span::styled(
+                                    RISING_EDGE.second_line,
+                                    Style::default().fg(color_green),
+                                ));
+                            }
+                            Value::V0 => {
+                                line0.push(Span::styled(
+                                    FALLING_EDGE.first_line,
+                                    Style::default().fg(color_green),
+                                ));
+                                line1.push(Span::styled(
+                                    FALLING_EDGE.second_line,
+                                    Style::default().fg(color_green),
+                                ));
+                            }
+                            Value::X => {
+                                line0.push(Span::styled("x", Style::default().fg(color_green)));
+                                line1.push(Span::styled("x", Style::default().fg(color_green)));
+                            }
+                            Value::Z => {
+                                line0.push(Span::styled("z", Style::default().fg(color_green)));
+                                line1.push(Span::styled("z", Style::default().fg(color_green)));
+                            }
+                        },
+                        crate::signal::ValueDisplayEvent::MultipleEvent => {
+                            line0.push(Span::styled("␩", Style::default().fg(color_green)));
+                            line1.push(Span::styled("␩", Style::default().fg(color_green)));
+                            // line1.push(Span::styled("␨", Style::default().fg(color_green)));
+                            // line1.push(Span::styled("␨", Style::default().fg(color_green)));
+                        }
+                        crate::signal::ValueDisplayEvent::Stay(value) => match value {
+                            Value::V1 => {
+                                line0.push(Span::styled("─", Style::default().fg(color_green)));
+                                line1.push(Span::styled(" ", Style::default().fg(color_green)));
+                            }
+                            Value::V0 => {
+                                line0.push(Span::styled(" ", Style::default().fg(color_green)));
+                                line1.push(Span::styled("─", Style::default().fg(color_green)));
+                            }
+                            Value::X => {
+                                line0.push(Span::styled("x", Style::default().fg(color_green)));
+                                line1.push(Span::styled("x", Style::default().fg(color_green)));
+                            }
+                            Value::Z => {
+                                line0.push(Span::styled("z", Style::default().fg(color_green)));
+                                line1.push(Span::styled("z", Style::default().fg(color_green)));
+                            }
+                        },
+                    }
+                    vec![line0, line1]
+                }
+                crate::signal::DisplayEvent::Vector(vector_display_event) => {
+                    if lines.len() == 0 {
+                        lines.push(vec![]);
+                        lines.push(vec![]);
+                        lines.push(vec![]);
+                    }
+                    let [mut line0, mut line1, mut line2] = lines.try_into().unwrap();
+
+                    match vector_display_event {
+                        signal::VectorDisplayEvent::ChangeEvent(_) => {
+                            line0.push(Span::styled("┬", Style::default().fg(color_green)));
+                            line1.push(Span::styled("│", Style::default().fg(color_green)));
+                            line2.push(Span::styled("┴", Style::default().fg(color_green)));
+                        }
+                        signal::VectorDisplayEvent::MultipleEvent => {
+                            line0.push(Span::styled("␩", Style::default().fg(color_green)));
+                            line1.push(Span::styled("␩", Style::default().fg(color_green)));
+                            line2.push(Span::styled("␩", Style::default().fg(color_green)));
+                        }
+                        // TODO: show vector values
+                        signal::VectorDisplayEvent::Stay(_) => {
+                            line0.push(Span::styled("─", Style::default().fg(color_green)));
+                            line1.push(Span::styled(" ", Style::default().fg(color_green)));
+                            line2.push(Span::styled("─", Style::default().fg(color_green)));
+                        }
+                    }
+                    vec![line0, line1, line2]
+                }
+            }
+        });
+
+        // Show binary values for Vector signals in the middle line
+        let mut start_index = None;
+        display_event_arr
+            .iter()
+            .enumerate()
+            .for_each(|(i, event)| match event {
+                signal::DisplayEvent::Value(_) => {}
+                signal::DisplayEvent::Vector(vector_display_event) => match vector_display_event {
+                    signal::VectorDisplayEvent::ChangeEvent(vector) => {
+                        match start_index {
+                            Some(index) => {
+                                lines[1].splice(
+                                    index + 1..i,
+                                    middle_str(i - index - 1, vector.to_string()).into_iter(),
+                                );
+                            }
+                            None => {}
+                        };
+                        start_index = Some(i);
+                    }
+                    signal::VectorDisplayEvent::MultipleEvent => {}
+                    signal::VectorDisplayEvent::Stay(_) => {}
+                },
             });
 
-        vec![Line::from(lines.0), Line::from(lines.1)]
+        lines.into_iter().map(|x| Line::from(x)).collect::<Vec<_>>()
     }
 }
 
