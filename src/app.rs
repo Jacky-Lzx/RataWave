@@ -11,9 +11,11 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
     layout::{Constraint, Direction, Layout},
-    text::Line,
+    style::{Color, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
+use std::str::FromStr;
 use vcd::{ScopeItem, TimescaleUnit, Value};
 
 use crate::{
@@ -193,52 +195,38 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut ratatui::Frame<'_>) {
-        let layouts = Layout::default()
+        let main_layouts = Layout::default()
             .direction(Direction::Vertical)
             .margin(2)
             .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
             .split(frame.area());
 
-        let signal_vec = self.module_root.get_signals();
-
-        // let signals = Paragraph::new(
-        //     signal_vec
-        //         .iter()
-        //         .map(|x| x.output_name())
-        //         .collect::<Vec<String>>()
-        //         .join("\n"),
-        // )
-        // .block(Block::default().borders(Borders::ALL).title("Names"));
+        let signals = self.module_root.get_signals();
 
         let name_stamp_layouts = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Fill(1), Constraint::Fill(9)].as_ref())
-            .split(layouts[0]);
+            .split(main_layouts[0]);
 
+        let signal_layouts = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Max(4); signals.len()])
+            .split(main_layouts[1]);
+
+        self.arr_size = signal_layouts[1].width as usize;
+
+        // Display program title
         let redundant = Paragraph::new(Line::from("RataWave").centered())
             .block(Block::default().borders(Borders::ALL));
         frame.render_widget(redundant, name_stamp_layouts[0]);
 
-        let signal_layouts = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Max(4); signal_vec.len()])
-            .split(layouts[1]);
-
-        // let events = Layout::vertical(vec![Constraint::Min(3); signal_vec.len() * 2])
-        //     .split(signal_layouts[1]);
-
-        // let names = Layout::vertical(vec![Constraint::Min(3); signal_vec.len()]);
-
-        self.arr_size = signal_layouts[1].width as usize;
-
+        // Display time stamp
         let mut time_stamp_str = String::from("");
-
         // Show stamps after each 10 steps
         let show_split = 10;
-
         let mut time_stamp_graph = String::from("");
-
         let mut stamp_index = 0;
+        debug!("arr_size: {}", self.arr_size);
         while stamp_index < self.arr_size {
             let mut time_stamp = format!(
                 "{}",
@@ -265,10 +253,9 @@ impl App {
 
         frame.render_widget(time_show, name_stamp_layouts[1]);
 
-        // frame.render_widget(signals, signal_layouts[0]);
-
-        for (index, signal) in signal_vec.iter().enumerate() {
-            let par = signal
+        // Display signals
+        for (index, signal) in signals.iter().enumerate() {
+            let signal_value = signal
                 .events_arr_in_range(self.time_start.time(), self.time_step.time(), self.arr_size)
                 .iter()
                 .map(|x| match x {
@@ -294,43 +281,20 @@ impl App {
                 .collect::<String>();
 
             let mut signal_event_lines = self.get_lines_from_a_signal(signal);
-            signal_event_lines.insert(0, Line::from(par));
+            signal_event_lines.insert(0, Line::from(signal_value));
 
-            let sparkline = Paragraph::new(signal_event_lines);
+            let signal_graph = Paragraph::new(signal_event_lines);
 
-            let a_signal_layout = Layout::default()
+            let single_signal_layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints(vec![Constraint::Fill(1), Constraint::Fill(9)])
                 .split(signal_layouts[index]);
 
-            let a_signal_name = Line::from(signal_vec.get(index).unwrap().output_name());
+            let signal_name = Line::from(signals.get(index).unwrap().output_name());
 
-            frame.render_widget(a_signal_name, a_signal_layout[0]);
-            frame.render_widget(sparkline, a_signal_layout[1]);
+            frame.render_widget(signal_name, single_signal_layout[0]);
+            frame.render_widget(signal_graph, single_signal_layout[1]);
         }
-
-        // let waveform = Paragraph::new(
-        //     signal_vec
-        //         .iter()
-        //         .map(|x| {
-        //             let event_arr = x
-        //                 .event_arr_in_range(
-        //                     (
-        //                         0,
-        //                         self.time_max / base.pow(self.time_split.try_into().unwrap()),
-        //                     ),
-        //                     self.time_max / base.pow(self.time_split.try_into().unwrap()) / 100,
-        //                 )
-        //                 .iter()
-        //                 .map(|x| vector_to_base_10(x))
-        //                 .collect();
-        //         })
-        //         .collect::<Vec<String>>()
-        //         .join("\n"),
-        // )
-        // .block(Block::default().borders(Borders::ALL).title("Waveform"));
-
-        // frame.render_widget(waveform, layouts[1]);
     }
 
     fn handle_key_event(&mut self, key_event: event::KeyEvent) {
@@ -366,70 +330,114 @@ impl App {
             self.arr_size,
         );
 
-        let lines =
-            display_event_arr
-                .iter()
-                .fold(("".to_string(), "".to_string()), |mut lines, event| {
-                    match event {
-                        crate::signal::DisplayEvent::Value(value_display_event) => {
-                            match value_display_event {
-                                crate::signal::ValueDisplayEvent::ChangeEvent(value) => match value
-                                {
-                                    Value::V1 => {
-                                        lines.0.push_str(RISING_EDGE.first_line);
-                                        lines.1.push_str(RISING_EDGE.second_line);
-                                    }
-                                    Value::V0 => {
-                                        lines.0.push_str(FALLING_EDGE.first_line);
-                                        lines.1.push_str(FALLING_EDGE.second_line);
-                                    }
-                                    Value::X => {
-                                        lines.0.push_str("x");
-                                        lines.1.push_str("x");
-                                    }
-                                    Value::Z => {
-                                        lines.0.push_str("z");
-                                        lines.1.push_str("z");
-                                    }
-                                },
-                                crate::signal::ValueDisplayEvent::MultipleEvent => {
-                                    lines.0.push_str("␩");
-                                    lines.1.push_str("␩");
-                                    // lines.0.push_str("␨");
-                                    // lines.1.push_str("␨");
+        let color_green = Color::from_str("#a6e3a1").unwrap();
+
+        let lines = display_event_arr
+            .iter()
+            .fold((vec![], vec![]), |mut lines, event| {
+                match event {
+                    crate::signal::DisplayEvent::Value(value_display_event) => {
+                        match value_display_event {
+                            crate::signal::ValueDisplayEvent::ChangeEvent(value) => match value {
+                                Value::V1 => {
+                                    lines.0.push(Span::styled(
+                                        RISING_EDGE.first_line,
+                                        Style::default().fg(color_green),
+                                    ));
+                                    lines.1.push(Span::styled(
+                                        RISING_EDGE.second_line,
+                                        Style::default().fg(color_green),
+                                    ));
                                 }
-                                crate::signal::ValueDisplayEvent::Stay(value) => match value {
-                                    Value::V1 => {
-                                        lines.0.push_str("─");
-                                        lines.1.push_str(" ");
-                                    }
-                                    Value::V0 => {
-                                        lines.0.push_str(" ");
-                                        lines.1.push_str("─");
-                                    }
-                                    Value::X => {
-                                        lines.0.push_str("x");
-                                        lines.1.push_str("x");
-                                    }
-                                    Value::Z => {
-                                        lines.0.push_str("z");
-                                        lines.1.push_str("z");
-                                    }
-                                },
+                                Value::V0 => {
+                                    lines.0.push(Span::styled(
+                                        FALLING_EDGE.first_line,
+                                        Style::default().fg(color_green),
+                                    ));
+                                    lines.1.push(Span::styled(
+                                        FALLING_EDGE.second_line,
+                                        Style::default().fg(color_green),
+                                    ));
+                                }
+                                Value::X => {
+                                    lines
+                                        .0
+                                        .push(Span::styled("x", Style::default().fg(color_green)));
+                                    lines
+                                        .1
+                                        .push(Span::styled("x", Style::default().fg(color_green)));
+                                }
+                                Value::Z => {
+                                    lines
+                                        .0
+                                        .push(Span::styled("z", Style::default().fg(color_green)));
+                                    lines
+                                        .1
+                                        .push(Span::styled("z", Style::default().fg(color_green)));
+                                }
+                            },
+                            crate::signal::ValueDisplayEvent::MultipleEvent => {
+                                lines
+                                    .0
+                                    .push(Span::styled("␩", Style::default().fg(color_green)));
+                                lines
+                                    .1
+                                    .push(Span::styled("␩", Style::default().fg(color_green)));
+                                // lines.0.push("␨");
+                                // lines.1.push("␨");
                             }
-                        }
-                        crate::signal::DisplayEvent::Vector(vector_display_event) => {
-                            match vector_display_event {
-                                _ => {
-                                    lines.0.push_str("m");
-                                    lines.0.push_str("m");
+                            crate::signal::ValueDisplayEvent::Stay(value) => match value {
+                                Value::V1 => {
+                                    lines
+                                        .0
+                                        .push(Span::styled("─", Style::default().fg(color_green)));
+                                    lines
+                                        .1
+                                        .push(Span::styled(" ", Style::default().fg(color_green)));
                                 }
+                                Value::V0 => {
+                                    lines
+                                        .0
+                                        .push(Span::styled(" ", Style::default().fg(color_green)));
+                                    lines
+                                        .1
+                                        .push(Span::styled("─", Style::default().fg(color_green)));
+                                }
+                                Value::X => {
+                                    lines
+                                        .0
+                                        .push(Span::styled("x", Style::default().fg(color_green)));
+                                    lines
+                                        .1
+                                        .push(Span::styled("x", Style::default().fg(color_green)));
+                                }
+                                Value::Z => {
+                                    lines
+                                        .0
+                                        .push(Span::styled("z", Style::default().fg(color_green)));
+                                    lines
+                                        .1
+                                        .push(Span::styled("z", Style::default().fg(color_green)));
+                                }
+                            },
+                        }
+                    }
+                    crate::signal::DisplayEvent::Vector(vector_display_event) => {
+                        match vector_display_event {
+                            _ => {
+                                lines
+                                    .0
+                                    .push(Span::styled("m", Style::default().fg(color_green)));
+                                lines
+                                    .0
+                                    .push(Span::styled("m", Style::default().fg(color_green)));
                             }
                         }
                     }
+                }
 
-                    lines
-                });
+                lines
+            });
 
         vec![Line::from(lines.0), Line::from(lines.1)]
     }
