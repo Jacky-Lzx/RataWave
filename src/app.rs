@@ -275,33 +275,9 @@ impl App {
 
         // Display signals
         for (index, signal) in signals.iter().enumerate() {
-            let signal_value = signal
-                .events_arr_in_range(self.time_start.time(), self.time_step.time(), self.arr_size)
-                .iter()
-                .map(|x| match x {
-                    crate::signal::DisplayEvent::Value(value_display_event) => {
-                        match value_display_event {
-                            crate::signal::ValueDisplayEvent::ChangeEvent(value) => {
-                                value.to_string()
-                            }
-                            crate::signal::ValueDisplayEvent::Stay(value) => value.to_string(),
-                            _ => "T".to_string(),
-                        }
-                    }
-                    crate::signal::DisplayEvent::Vector(vector_display_event) => {
-                        match vector_display_event {
-                            crate::signal::VectorDisplayEvent::ChangeEvent(value) => {
-                                value.to_string()
-                            }
-                            crate::signal::VectorDisplayEvent::Stay(value) => value.to_string(),
-                            _ => "T".to_string(),
-                        }
-                    }
-                })
-                .collect::<String>();
-
+            debug!("Signal {}: {:?}", signal.name, signal.events);
             let mut signal_event_lines = self.get_lines_from_a_signal(signal);
-            signal_event_lines.insert(0, Line::from(signal_value));
+            signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(signal)));
 
             let signal_graph = Paragraph::new(signal_event_lines);
 
@@ -341,6 +317,29 @@ impl App {
             },
             _ => {}
         }
+    }
+
+    fn get_value_string_from_a_signal(&self, signal: &Signal) -> String {
+        signal
+            .events_arr_in_range(self.time_start.time(), self.time_step.time(), self.arr_size)
+            .iter()
+            .map(|x| match x {
+                crate::signal::DisplayEvent::Value(value_display_event) => {
+                    match value_display_event {
+                        crate::signal::ValueDisplayEvent::ChangeEvent(value) => value.to_string(),
+                        crate::signal::ValueDisplayEvent::Stay(value) => value.to_string(),
+                        _ => "T".to_string(),
+                    }
+                }
+                crate::signal::DisplayEvent::Vector(vector_display_event) => {
+                    match vector_display_event {
+                        crate::signal::VectorDisplayEvent::ChangeEvent(value) => value.to_string(),
+                        crate::signal::VectorDisplayEvent::Stay(value) => value.to_string(),
+                        _ => "T".to_string(),
+                    }
+                }
+            })
+            .collect::<String>()
     }
 
     fn get_lines_from_a_signal(&self, signal: &Signal) -> Vec<Line> {
@@ -438,7 +437,6 @@ impl App {
                             line1.push(Span::styled("␩", Style::default().fg(color_green)));
                             line2.push(Span::styled("␩", Style::default().fg(color_green)));
                         }
-                        // TODO: show vector values
                         signal::VectorDisplayEvent::Stay(_) => {
                             line0.push(Span::styled("─", Style::default().fg(color_green)));
                             line1.push(Span::styled(" ", Style::default().fg(color_green)));

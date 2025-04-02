@@ -214,7 +214,7 @@ impl Signal {
             if self.events[start_index].0 >= end_time {
                 *element = match &last_event {
                     DisplayEvent::Value(ValueDisplayEvent::ChangeEvent(value)) => {
-                        DisplayEvent::Value(ValueDisplayEvent::Stay(*value))
+                        DisplayEvent::Value(ValueDisplayEvent::Stay(value.clone()))
                     }
                     DisplayEvent::Vector(VectorDisplayEvent::ChangeEvent(vector)) => {
                         DisplayEvent::Vector(VectorDisplayEvent::Stay(vector.clone()))
