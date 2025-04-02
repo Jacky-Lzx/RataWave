@@ -18,7 +18,7 @@ use vcd::{ScopeItem, TimescaleUnit, Value};
 
 use crate::{
     Module, Signal,
-    signal::{FALLING_EDGE, RISING_EDGE, vector_to_base_10},
+    signal::{self, FALLING_EDGE, RISING_EDGE, vector_to_base_10},
 };
 
 use crate::signal::ValueType;
@@ -194,41 +194,42 @@ impl App {
 
     fn draw(&mut self, frame: &mut ratatui::Frame<'_>) {
         let layouts = Layout::default()
-            .direction(Direction::Horizontal)
+            .direction(Direction::Vertical)
             .margin(2)
-            .constraints([Constraint::Fill(1), Constraint::Fill(9)].as_ref())
+            .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
             .split(frame.area());
 
         let signal_vec = self.module_root.get_signals();
 
-        let signals = Paragraph::new(
-            signal_vec
-                .iter()
-                .map(|x| x.output_name())
-                .collect::<Vec<String>>()
-                .join("\n"),
-        )
-        .block(Block::default().borders(Borders::ALL).title("Names"));
+        // let signals = Paragraph::new(
+        //     signal_vec
+        //         .iter()
+        //         .map(|x| x.output_name())
+        //         .collect::<Vec<String>>()
+        //         .join("\n"),
+        // )
+        // .block(Block::default().borders(Borders::ALL).title("Names"));
 
-        let name_layouts = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(2), Constraint::Min(0)].as_ref())
+        let name_stamp_layouts = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Fill(1), Constraint::Fill(9)].as_ref())
             .split(layouts[0]);
 
-        let redundant = Paragraph::new("RataWave");
-
-        frame.render_widget(redundant, name_layouts[0]);
-        frame.render_widget(signals, name_layouts[1]);
+        let redundant = Paragraph::new(Line::from("RataWave").centered())
+            .block(Block::default().borders(Borders::ALL));
+        frame.render_widget(redundant, name_stamp_layouts[0]);
 
         let signal_layouts = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(2), Constraint::Min(0)].as_ref())
+            .constraints(vec![Constraint::Max(4); signal_vec.len()])
             .split(layouts[1]);
 
-        let events = Layout::vertical(vec![Constraint::Fill(1); signal_vec.len() * 2])
-            .split(signal_layouts[1]);
+        // let events = Layout::vertical(vec![Constraint::Min(3); signal_vec.len() * 2])
+        //     .split(signal_layouts[1]);
 
-        self.arr_size = events[0].width as usize;
+        // let names = Layout::vertical(vec![Constraint::Min(3); signal_vec.len()]);
+
+        self.arr_size = signal_layouts[1].width as usize;
 
         let mut time_stamp_str = String::from("");
 
@@ -257,12 +258,14 @@ impl App {
         }
 
         let time_show = Paragraph::new(vec![
+            Line::from(""),
             Line::from(time_stamp_str),
             Line::from(time_stamp_graph),
         ]);
-        // .block(Block::default().borders(Borders::ALL));
 
-        frame.render_widget(time_show, signal_layouts[0]);
+        frame.render_widget(time_show, name_stamp_layouts[1]);
+
+        // frame.render_widget(signals, signal_layouts[0]);
 
         for (index, signal) in signal_vec.iter().enumerate() {
             let par = signal
@@ -290,10 +293,20 @@ impl App {
                 })
                 .collect::<String>();
 
-            let sparkline = Paragraph::new(self.get_lines_from_a_signal(signal));
+            let mut signal_event_lines = self.get_lines_from_a_signal(signal);
+            signal_event_lines.insert(0, Line::from(par));
 
-            frame.render_widget(par, events[index * 2]);
-            frame.render_widget(sparkline, events[index * 2 + 1]);
+            let sparkline = Paragraph::new(signal_event_lines);
+
+            let a_signal_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(vec![Constraint::Fill(1), Constraint::Fill(9)])
+                .split(signal_layouts[index]);
+
+            let a_signal_name = Line::from(signal_vec.get(index).unwrap().output_name());
+
+            frame.render_widget(a_signal_name, a_signal_layout[0]);
+            frame.render_widget(sparkline, a_signal_layout[1]);
         }
 
         // let waveform = Paragraph::new(
