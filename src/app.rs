@@ -4,19 +4,19 @@ use std::{
     fs::File,
     io::{self, BufReader},
     ops::Add,
+    rc::Rc,
 };
 
-use cli_log::debug;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 use std::str::FromStr;
-use vcd::{ScopeItem, TimescaleUnit, Value};
+use vcd::{ScopeItem, TimescaleUnit, Value, Vector};
 
 use crate::{
     Module, Signal,
@@ -187,6 +187,8 @@ fn middle_str<'a>(length: usize, mid_str: String) -> Vec<Span<'a>> {
             .map(|x| Span::styled(x.to_string(), Style::default())),
     );
 
+    assert!(arr.len() == length);
+
     arr
 }
 
@@ -233,7 +235,17 @@ impl App {
             .constraints(vec![Constraint::Max(4); signals.len()])
             .split(main_layouts[1]);
 
-        self.arr_size = signal_layouts[1].width as usize;
+        let signal_layouts: Vec<Rc<[Rect]>> = signal_layouts
+            .iter()
+            .map(|&x| {
+                Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(vec![Constraint::Fill(1), Constraint::Fill(9)])
+                    .split(x)
+            })
+            .collect();
+
+        self.arr_size = signal_layouts[0][1].width as usize;
 
         // Display program title
         let redundant = Paragraph::new(Line::from("RataWave").centered())
@@ -246,7 +258,6 @@ impl App {
         let show_split = 10;
         let mut time_stamp_graph = String::from("");
         let mut stamp_index = 0;
-        debug!("arr_size: {}", self.arr_size);
         while stamp_index < self.arr_size {
             let mut time_stamp = format!(
                 "{}",
@@ -275,21 +286,15 @@ impl App {
 
         // Display signals
         for (index, signal) in signals.iter().enumerate() {
-            debug!("Signal {}: {:?}", signal.name, signal.events);
             let mut signal_event_lines = self.get_lines_from_a_signal(signal);
             signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(signal)));
 
             let signal_graph = Paragraph::new(signal_event_lines);
 
-            let single_signal_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints(vec![Constraint::Fill(1), Constraint::Fill(9)])
-                .split(signal_layouts[index]);
-
             let signal_name = Line::from(signals.get(index).unwrap().output_name());
 
-            frame.render_widget(signal_name, single_signal_layout[0]);
-            frame.render_widget(signal_graph, single_signal_layout[1]);
+            frame.render_widget(signal_name, signal_layouts[index][0]);
+            frame.render_widget(signal_graph, signal_layouts[index][1]);
         }
     }
 
@@ -450,6 +455,7 @@ impl App {
 
         // Show binary values for Vector signals in the middle line
         let mut start_index = None;
+        let mut vector_value: Option<Vector> = None;
         display_event_arr
             .iter()
             .enumerate()
@@ -461,17 +467,44 @@ impl App {
                             Some(index) => {
                                 lines[1].splice(
                                     index + 1..i,
-                                    middle_str(i - index - 1, vector.to_string()).into_iter(),
+                                    middle_str(
+                                        i - index - 1,
+                                        vector_value.clone().unwrap().to_string(),
+                                    )
+                                    .into_iter(),
                                 );
                             }
                             None => {}
                         };
                         start_index = Some(i);
+                        vector_value = Some(vector.clone());
                     }
                     signal::VectorDisplayEvent::MultipleEvent => {}
-                    signal::VectorDisplayEvent::Stay(_) => {}
+                    signal::VectorDisplayEvent::Stay(vector) => match start_index {
+                        None => {
+                            start_index = Some(i);
+                            vector_value = Some(vector.clone());
+                        }
+                        _ => {}
+                    },
                 },
             });
+
+        // Last vector
+        if let Some(index) = start_index {
+            use signal::VectorDisplayEvent::*;
+            match &display_event_arr[index] {
+                signal::DisplayEvent::Vector(ChangeEvent(_))
+                | signal::DisplayEvent::Vector(Stay(_)) => {
+                    let len = lines[1].len();
+                    lines[1].splice(
+                        index + 1..len,
+                        middle_str(len - index - 1, vector_value.unwrap().to_string()).into_iter(),
+                    );
+                }
+                _ => {}
+            };
+        };
 
         lines.into_iter().map(|x| Line::from(x)).collect::<Vec<_>>()
     }
