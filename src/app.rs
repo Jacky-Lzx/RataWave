@@ -1,10 +1,12 @@
 use std::{
     cmp::{max, min},
+    fmt::Display,
     fs::File,
     io::{self, BufReader},
+    ops::Add,
 };
 
-use cli_log::debug;
+use cli_log::{debug, error};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
@@ -12,7 +14,7 @@ use ratatui::{
     text::Line,
     widgets::{Block, Borders, Paragraph},
 };
-use vcd::{ScopeItem, Value};
+use vcd::{ScopeItem, TimescaleUnit, Value};
 
 use crate::{
     Module, Signal,
@@ -27,16 +29,96 @@ enum AppMode {
     Exit,
 }
 
+#[derive(Clone)]
+struct Time {
+    // Stored in ps
+    time: u64,
+}
+
+impl Display for Time {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut t: f64 = self.time as f64;
+        // let mut scale = TimescaleUnit::PS;
+        use TimescaleUnit::*;
+        let scales = [PS, NS, US, MS, S];
+        let scale = scales
+            .iter()
+            .rfind(|x| t >= (PS.divisor() / x.divisor()) as f64)
+            .unwrap_or(&PS);
+        t = t / (PS.divisor() / scale.divisor()) as f64;
+        write!(f, "{}{}", t, scale)
+    }
+}
+
+impl Add<u64> for Time {
+    type Output = Time;
+
+    fn add(self, rhs: u64) -> Self::Output {
+        Time {
+            time: self.time + rhs,
+        }
+    }
+}
+
+impl Time {
+    pub fn new(time: u64, unit: TimescaleUnit) -> Self {
+        let time_in_ps = time * TimescaleUnit::PS.divisor() / unit.divisor();
+        Time { time: time_in_ps }
+    }
+
+    pub fn increase(&mut self, time_inc: u64) {
+        self.time += time_inc;
+    }
+
+    pub fn decrease(&mut self, time_dec: u64) {
+        self.time = if self.time < time_dec {
+            0
+        } else {
+            self.time - time_dec
+        }
+    }
+
+    pub fn time(&self) -> u64 {
+        self.time
+    }
+
+    pub fn formulate(&self) -> u64 {
+        let mut t = self.time;
+        while t >= 1000 {
+            if t % 1000 != 0 {
+                panic!("self.time can not divides 1000!")
+            }
+            t /= 1000;
+        }
+        t
+    }
+
+    pub fn step_decrease(&mut self) {
+        self.time = match self.formulate() {
+            1 | 10 | 100 => max(1, self.time / 2),
+            5 | 50 | 500 => self.time / 5,
+            _ => panic!("Invalid time step: {}", self.time),
+        }
+    }
+    pub fn step_increase(&mut self) {
+        self.time = match self.formulate() {
+            1 | 10 | 100 => self.time * 5,
+            5 | 50 | 500 => self.time * 2,
+            _ => panic!("Invalid time step: {}", self.time),
+        }
+    }
+}
+
 pub struct App {
     module_root: Module,
-    time_start: u64,
-    time_step: u64,
+    time_start: Time,
+    time_step: Time,
     arr_size: usize,
-
+    // time_scale: TimescaleUnit,
     mode: AppMode,
 }
 
-fn parse_files(file_name: String) -> io::Result<Module> {
+fn parse_files(file_name: String) -> io::Result<(Module, TimescaleUnit)> {
     let mut root = Module {
         name: String::from("Root"),
         depth: 1,
@@ -48,6 +130,8 @@ fn parse_files(file_name: String) -> io::Result<Module> {
 
     // Parse the header and find the wires
     let header = parser.parse_header()?;
+
+    assert!(header.timescale.unwrap().0 == 1);
 
     header.items.iter().for_each(|x| {
         use ScopeItem::*;
@@ -81,28 +165,19 @@ fn parse_files(file_name: String) -> io::Result<Module> {
         }
     }
 
-    Ok(root)
+    Ok((root, header.timescale.unwrap().1))
 }
 
 impl App {
     pub fn default() -> io::Result<Self> {
-        let module_root = parse_files(String::from("./src/test_1.vcd"))?;
-        // debug!("{}", module_root);
+        let (module_root, time_base_scale) = parse_files(String::from("./src/test_1.vcd"))?;
         Ok(Self {
             mode: AppMode::Run,
             module_root,
-            time_start: 0,
-            time_step: 1000,
+            time_start: Time::new(0, time_base_scale),
+            time_step: Time::new(10, time_base_scale),
             arr_size: 100,
         })
-    }
-
-    fn change_time_step(&mut self, is_increase: bool) {
-        if is_increase {
-            self.time_step = max(self.time_step / 10, 10);
-        } else {
-            self.time_step *= 10;
-        }
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -165,8 +240,8 @@ impl App {
         let mut stamp_index = 0;
         while stamp_index < self.arr_size {
             let mut time_stamp = format!(
-                "{}ns",
-                self.time_start + stamp_index as u64 * self.time_step
+                "{}",
+                self.time_start.clone() + stamp_index as u64 * self.time_step.time()
             );
             let strip_len = min(10, self.arr_size - stamp_index);
             if time_stamp.len() > strip_len {
@@ -191,7 +266,7 @@ impl App {
 
         for (index, signal) in signal_vec.iter().enumerate() {
             let par = signal
-                .events_arr_in_range(self.time_start, self.time_step, self.arr_size)
+                .events_arr_in_range(self.time_start.time(), self.time_step.time(), self.arr_size)
                 .iter()
                 .map(|x| match x {
                     crate::signal::DisplayEvent::Value(value_display_event) => {
@@ -252,19 +327,18 @@ impl App {
                     self.mode = AppMode::Exit;
                 }
                 KeyCode::Char('=') => {
-                    self.change_time_step(true);
+                    self.time_step.step_decrease();
                 }
                 KeyCode::Char('-') => {
-                    self.change_time_step(false);
+                    self.time_step.step_increase();
                 }
                 KeyCode::Char('h') => {
-                    self.time_start = max(
-                        0,
-                        self.time_start as i64 - self.arr_size as i64 / 2 * self.time_step as i64,
-                    ) as u64;
+                    self.time_start
+                        .decrease(self.arr_size as u64 / 2 * self.time_step.time());
                 }
                 KeyCode::Char('l') => {
-                    self.time_start += self.arr_size as u64 / 2 * self.time_step;
+                    self.time_start
+                        .increase(self.arr_size as u64 / 2 * self.time_step.time());
                 }
                 _ => {}
             },
@@ -273,8 +347,11 @@ impl App {
     }
 
     fn get_lines_from_a_signal(&self, signal: &Signal) -> Vec<Line> {
-        let display_event_arr =
-            signal.events_arr_in_range(self.time_start, self.time_step, self.arr_size);
+        let display_event_arr = signal.events_arr_in_range(
+            self.time_start.time(),
+            self.time_step.time(),
+            self.arr_size,
+        );
 
         let lines =
             display_event_arr
