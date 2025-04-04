@@ -192,6 +192,15 @@ fn middle_str<'a>(length: usize, mid_str: String) -> Vec<Span<'a>> {
     arr
 }
 
+fn vector_contain_x_or_z(vector: &Vector) -> bool {
+    vector
+        .iter()
+        .find(|&x| x == Value::X || x == Value::Z)
+        .iter()
+        .count()
+        != 0
+}
+
 impl App {
     pub fn default() -> io::Result<Self> {
         let (module_root, time_base_scale) = parse_files(String::from("./src/test_1.vcd"))?;
@@ -355,6 +364,7 @@ impl App {
         );
 
         let color_green = Color::from_str("#a6e3a1").unwrap();
+        let color_red = Color::from_str("#f38ba8").unwrap();
 
         let mut lines = display_event_arr.iter().fold(vec![], |mut lines, event| {
             match event {
@@ -388,12 +398,12 @@ impl App {
                                 ));
                             }
                             Value::X => {
-                                line0.push(Span::styled("x", Style::default().fg(color_green)));
-                                line1.push(Span::styled("x", Style::default().fg(color_green)));
+                                line0.push(Span::styled("x", Style::default().fg(color_red)));
+                                line1.push(Span::styled("x", Style::default().fg(color_red)));
                             }
                             Value::Z => {
-                                line0.push(Span::styled("z", Style::default().fg(color_green)));
-                                line1.push(Span::styled("z", Style::default().fg(color_green)));
+                                line0.push(Span::styled("z", Style::default().fg(color_red)));
+                                line1.push(Span::styled("z", Style::default().fg(color_red)));
                             }
                         },
                         crate::signal::ValueDisplayEvent::MultipleEvent => {
@@ -412,12 +422,12 @@ impl App {
                                 line1.push(Span::styled("─", Style::default().fg(color_green)));
                             }
                             Value::X => {
-                                line0.push(Span::styled("x", Style::default().fg(color_green)));
-                                line1.push(Span::styled("x", Style::default().fg(color_green)));
+                                line0.push(Span::styled("x", Style::default().fg(color_red)));
+                                line1.push(Span::styled("x", Style::default().fg(color_red)));
                             }
                             Value::Z => {
-                                line0.push(Span::styled("z", Style::default().fg(color_green)));
-                                line1.push(Span::styled("z", Style::default().fg(color_green)));
+                                line0.push(Span::styled("z", Style::default().fg(color_red)));
+                                line1.push(Span::styled("z", Style::default().fg(color_red)));
                             }
                         },
                     }
@@ -442,10 +452,14 @@ impl App {
                             line1.push(Span::styled("␩", Style::default().fg(color_green)));
                             line2.push(Span::styled("␩", Style::default().fg(color_green)));
                         }
-                        signal::VectorDisplayEvent::Stay(_) => {
-                            line0.push(Span::styled("─", Style::default().fg(color_green)));
-                            line1.push(Span::styled(" ", Style::default().fg(color_green)));
-                            line2.push(Span::styled("─", Style::default().fg(color_green)));
+                        signal::VectorDisplayEvent::Stay(vector) => {
+                            let color = match vector_contain_x_or_z(vector) {
+                                true => color_red,
+                                false => color_green,
+                            };
+                            line0.push(Span::styled("─", Style::default().fg(color)));
+                            line1.push(Span::styled(" ", Style::default().fg(color)));
+                            line2.push(Span::styled("─", Style::default().fg(color)));
                         }
                     }
                     vec![line0, line1, line2]
