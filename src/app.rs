@@ -7,15 +7,17 @@ use std::{
     rc::Rc,
 };
 
+use cli_log::debug;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Flex, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{self, Block, Borders, Paragraph},
 };
 use std::str::FromStr;
+use tui_textarea::TextArea;
 use vcd::{ScopeItem, TimescaleUnit, Value, Vector};
 
 use crate::{
@@ -28,6 +30,7 @@ use crate::signal::ValueType;
 #[derive(PartialEq)]
 enum AppMode {
     Run,
+    Input,
     Exit,
 }
 
@@ -59,6 +62,61 @@ impl Add<u64> for Time {
         Time {
             time: self.time + rhs,
         }
+    }
+}
+
+/// helper function to create a centered rect using up certain percentage of the available rect `r`
+fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
+    let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
+    let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
+    let [area] = vertical.areas(area);
+    let [area] = horizontal.areas(area);
+    area
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ParseTimeError {
+    message: String,
+}
+
+impl Display for ParseTimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Parse time error: {}", self.message)
+    }
+}
+
+impl FromStr for Time {
+    type Err = ParseTimeError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        if s.len() == 0 {
+            return Err(ParseTimeError {
+                message: "Empty string".to_string(),
+            });
+        }
+
+        let split_index: usize = s.find(|x: char| !x.is_numeric()).ok_or(ParseTimeError {
+            message: "Split error".to_string(),
+        })?;
+
+        let (time, unit) = s.split_at(split_index);
+
+        let time = time.parse::<u64>().map_err(|_| ParseTimeError {
+            message: "Parse time error".to_string(),
+        })?;
+        let unit = TimescaleUnit::from_str(unit.trim()).map_err(|_| ParseTimeError {
+            message: "Parse unit error".to_string(),
+        })?;
+
+        if unit == TimescaleUnit::FS {
+            return Err(ParseTimeError {
+                message: "Not support FS time scale.".to_string(),
+            });
+        }
+
+        let time = time * TimescaleUnit::PS.divisor() / unit.divisor();
+
+        Ok(Time { time })
     }
 }
 
@@ -109,15 +167,29 @@ impl Time {
             _ => panic!("Invalid time step: {}", self.time),
         }
     }
+
+    /// Check if the given string is a valid time
+    /// E.g. "100ns" or "100 ns" is a valid time
+    ///
+    /// ```
+    /// assert_eq!(is_valid("100ns"), true)
+    /// ```
+    pub fn is_valid(s: &str) -> Result<(), ParseTimeError> {
+        match Time::from_str(s) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
 }
 
-pub struct App {
+pub struct App<'a> {
     module_root: Module,
     time_start: Time,
     time_step: Time,
     arr_size: usize,
     // time_scale: TimescaleUnit,
     mode: AppMode,
+    textarea: TextArea<'a>,
 }
 
 fn parse_files(file_name: String) -> io::Result<(Module, TimescaleUnit)> {
@@ -201,7 +273,7 @@ fn vector_contain_x_or_z(vector: &Vector) -> bool {
         != 0
 }
 
-impl App {
+impl<'a> App<'a> {
     pub fn default() -> io::Result<Self> {
         let (module_root, time_base_scale) = parse_files(String::from("./src/test_1.vcd"))?;
         Ok(Self {
@@ -210,6 +282,7 @@ impl App {
             time_start: Time::new(0, time_base_scale),
             time_step: Time::new(10, time_base_scale),
             arr_size: 100,
+            textarea: TextArea::default(),
         })
     }
 
@@ -218,7 +291,7 @@ impl App {
             // it's important to check that the event is a key press event as
             // crossterm also emits key release and repeat events on Windows.
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
+                self.handle_key_event(key_event)?
             }
             _ => {}
         };
@@ -305,9 +378,38 @@ impl App {
             frame.render_widget(signal_name, signal_layouts[index][0]);
             frame.render_widget(signal_graph, signal_layouts[index][1]);
         }
+
+        if self.mode == AppMode::Input {
+            match Time::is_valid(&self.textarea.lines()[0]) {
+                Ok(_) => {
+                    self.textarea
+                        .set_style(Style::default().fg(Color::LightGreen));
+                    self.textarea.set_block(
+                        Block::default()
+                            .border_style(Color::LightGreen)
+                            .borders(Borders::ALL)
+                            .title("Valid time"),
+                    );
+                }
+                Err(e) => {
+                    self.textarea
+                        .set_style(Style::default().fg(Color::LightRed));
+                    self.textarea.set_block(
+                        Block::default()
+                            .border_style(Color::LightRed)
+                            .borders(Borders::ALL)
+                            .title(format!("{}! Please Enter a valid time like \"100ns\"", e)),
+                    );
+                }
+            };
+            // let block = Block::bordered().title("Popup");
+            let area = popup_area(frame.area(), 60, 20);
+            frame.render_widget(widgets::Clear, area); //this clears out the background
+            frame.render_widget(&self.textarea, area);
+        }
     }
 
-    fn handle_key_event(&mut self, key_event: event::KeyEvent) {
+    fn handle_key_event(&mut self, key_event: event::KeyEvent) -> io::Result<()> {
         match self.mode {
             AppMode::Run => match key_event.code {
                 KeyCode::Char('q') => {
@@ -327,10 +429,41 @@ impl App {
                     self.time_start
                         .increase(self.arr_size as u64 / 2 * self.time_step.time());
                 }
+                KeyCode::Char('t') => {
+                    self.mode = AppMode::Input;
+                    // Initialize textarea
+                    self.textarea = TextArea::default();
+                    self.textarea
+                        .set_style(Style::default().fg(Color::LightGreen));
+                    self.textarea.set_block(
+                        Block::default()
+                            .border_style(Color::LightGreen)
+                            .borders(Borders::ALL)
+                            .title("Enter a time"),
+                    );
+                    self.textarea.set_cursor_line_style(Style::default());
+                }
                 _ => {}
+            },
+
+            AppMode::Input => match key_event.code {
+                KeyCode::Esc | KeyCode::Enter => {
+                    if Time::is_valid(self.textarea.lines()[0].as_str()).is_ok() {
+                        self.mode = AppMode::Run;
+                        let text = self.textarea.lines(); // Get input text
+                        let text = text.first().unwrap();
+                        debug!("input text: {:?}", text);
+                        let time = Time::from_str(text).unwrap();
+                        self.time_start = time;
+                    }
+                }
+                _ => {
+                    self.textarea.input(key_event);
+                }
             },
             _ => {}
         }
+        Ok(())
     }
 
     fn get_value_string_from_a_signal(&self, signal: &Signal) -> String {
@@ -524,7 +657,7 @@ impl App {
     }
 }
 
-impl App {
+impl<'a> App<'a> {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         while self.mode != AppMode::Exit {
             terminal.draw(|frame| self.draw(frame))?;
