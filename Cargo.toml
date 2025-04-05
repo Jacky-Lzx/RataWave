@@ -9,3 +9,4 @@ crossterm = "0.28.1"
 ratatui = "0.29.0"
 vcd = "0.7.0"
 tui-textarea = "0.7.0"
+catppuccin = { version = "2.5.1" , features = ["ratatui"]}

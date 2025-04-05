@@ -153,23 +153,30 @@ impl<'a> App<'a> {
         }
 
         if self.mode == AppMode::Input {
+            let color_green = (*catppuccin::PALETTE
+                .mocha
+                .get_color(catppuccin::ColorName::Green))
+            .into();
+            let color_red = (*catppuccin::PALETTE
+                .mocha
+                .get_color(catppuccin::ColorName::Red))
+            .into();
+
             match Time::is_valid(&self.textarea.lines()[0]) {
                 Ok(_) => {
-                    self.textarea
-                        .set_style(Style::default().fg(Color::LightGreen));
+                    self.textarea.set_style(Style::default().fg(color_green));
                     self.textarea.set_block(
                         Block::default()
-                            .border_style(Color::LightGreen)
+                            .border_style(color_green)
                             .borders(Borders::ALL)
                             .title("Valid time"),
                     );
                 }
                 Err(e) => {
-                    self.textarea
-                        .set_style(Style::default().fg(Color::LightRed));
+                    self.textarea.set_style(Style::default().fg(color_red));
                     self.textarea.set_block(
                         Block::default()
-                            .border_style(Color::LightRed)
+                            .border_style(color_red)
                             .borders(Borders::ALL)
                             .title(format!("{}! Please Enter a valid time like \"100ns\"", e)),
                     );
@@ -265,8 +272,14 @@ impl<'a> App<'a> {
             self.arr_size,
         );
 
-        let color_green = Color::from_str("#a6e3a1").unwrap();
-        let color_red = Color::from_str("#f38ba8").unwrap();
+        let color_green = (*catppuccin::PALETTE
+            .mocha
+            .get_color(catppuccin::ColorName::Green))
+        .into();
+        let color_red = (*catppuccin::PALETTE
+            .mocha
+            .get_color(catppuccin::ColorName::Red))
+        .into();
 
         let mut lines = display_event_arr.iter().fold(vec![], |mut lines, event| {
             match event {
