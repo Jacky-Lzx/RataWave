@@ -6,7 +6,7 @@ use crate::{
         },
         time::Time,
     },
-    utils::{middle_str, parse_files, popup_area, vector_contain_x_or_z},
+    utils::{middle_str, parse_files, vector_contain_x_or_z},
 };
 
 use std::{
@@ -15,12 +15,11 @@ use std::{
     rc::Rc,
 };
 
-use cli_log::debug;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
     layout::{Constraint, Direction, Flex, Layout, Rect},
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{self, Block, Borders, Paragraph},
 };

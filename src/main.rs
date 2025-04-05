@@ -1,5 +1,5 @@
 use cli_log::*;
-use vcd_rs::app::App;
+use rata_wave::app::App;
 
 use std::io;
 

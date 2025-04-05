@@ -135,7 +135,7 @@ impl Time {
     /// E.g. "100ns" or "100 ns" is a valid time
     ///
     /// ```
-    /// use vcd_rs::time::Time;
+    /// use rata_wave::time::Time;
     ///
     /// assert!(Time::is_valid("100ns").is_ok());
     /// assert!(Time::is_valid("100 ns").is_ok());

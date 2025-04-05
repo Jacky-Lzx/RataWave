@@ -470,6 +470,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rata_wave"
+version = "0.1.0"
+dependencies = [
+ "catppuccin",
+ "cli-log",
+ "crossterm",
+ "ratatui",
+ "tui-textarea",
+ "vcd",
+]
+
+[[package]]
 name = "ratatui"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -720,18 +732,6 @@ name = "vcd"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4505774fc84de82eb04caa74d859342b0daa376f4c6df45149593245dd62c004"
-
-[[package]]
-name = "vcd_rs"
-version = "0.1.0"
-dependencies = [
- "catppuccin",
- "cli-log",
- "crossterm",
- "ratatui",
- "tui-textarea",
- "vcd",
-]
 
 [[package]]
 name = "wasi"
