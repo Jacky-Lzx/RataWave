@@ -1,9 +1,17 @@
+use crate::{
+    modules::{
+        module::Module,
+        signal::{
+            DisplayEvent, FALLING_EDGE, RISING_EDGE, Signal, ValueDisplayEvent, VectorDisplayEvent,
+        },
+        time::Time,
+    },
+    utils::{middle_str, parse_files, popup_area, vector_contain_x_or_z},
+};
+
 use std::{
-    cmp::{max, min},
-    fmt::Display,
-    fs::File,
-    io::{self, BufReader},
-    ops::Add,
+    cmp::min,
+    io::{self},
     rc::Rc,
 };
 
@@ -11,175 +19,20 @@ use cli_log::debug;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
-    layout::{Constraint, Direction, Flex, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{self, Block, Borders, Paragraph},
 };
 use std::str::FromStr;
 use tui_textarea::TextArea;
-use vcd::{ScopeItem, TimescaleUnit, Value, Vector};
-
-use crate::{
-    Module, Signal,
-    signal::{self, FALLING_EDGE, RISING_EDGE},
-};
-
-use crate::signal::ValueType;
+use vcd::{Value, Vector};
 
 #[derive(PartialEq)]
 enum AppMode {
     Run,
     Input,
     Exit,
-}
-
-#[derive(Clone)]
-struct Time {
-    // Stored in ps
-    time: u64,
-}
-
-impl Display for Time {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut t: f64 = self.time as f64;
-        // let mut scale = TimescaleUnit::PS;
-        use TimescaleUnit::*;
-        let scales = [PS, NS, US, MS, S];
-        let scale = scales
-            .iter()
-            .rfind(|x| t >= (PS.divisor() / x.divisor()) as f64)
-            .unwrap_or(&PS);
-        t = t / (PS.divisor() / scale.divisor()) as f64;
-        write!(f, "{}{}", t, scale)
-    }
-}
-
-impl Add<u64> for Time {
-    type Output = Time;
-
-    fn add(self, rhs: u64) -> Self::Output {
-        Time {
-            time: self.time + rhs,
-        }
-    }
-}
-
-/// helper function to create a centered rect using up certain percentage of the available rect `r`
-fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
-    let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
-    let [area] = vertical.areas(area);
-    let [area] = horizontal.areas(area);
-    area
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct ParseTimeError {
-    message: String,
-}
-
-impl Display for ParseTimeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Parse time error: {}", self.message)
-    }
-}
-
-impl FromStr for Time {
-    type Err = ParseTimeError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.trim();
-        if s.len() == 0 {
-            return Err(ParseTimeError {
-                message: "Empty string".to_string(),
-            });
-        }
-
-        let split_index: usize = s.find(|x: char| !x.is_numeric()).ok_or(ParseTimeError {
-            message: "Split error".to_string(),
-        })?;
-
-        let (time, unit) = s.split_at(split_index);
-
-        let time = time.parse::<u64>().map_err(|_| ParseTimeError {
-            message: "Parse time error".to_string(),
-        })?;
-        let unit = TimescaleUnit::from_str(unit.trim()).map_err(|_| ParseTimeError {
-            message: "Parse unit error".to_string(),
-        })?;
-
-        if unit == TimescaleUnit::FS {
-            return Err(ParseTimeError {
-                message: "Not support FS time scale.".to_string(),
-            });
-        }
-
-        let time = time * TimescaleUnit::PS.divisor() / unit.divisor();
-
-        Ok(Time { time })
-    }
-}
-
-impl Time {
-    pub fn new(time: u64, unit: TimescaleUnit) -> Self {
-        let time_in_ps = time * TimescaleUnit::PS.divisor() / unit.divisor();
-        Time { time: time_in_ps }
-    }
-
-    pub fn increase(&mut self, time_inc: u64) {
-        self.time += time_inc;
-    }
-
-    pub fn decrease(&mut self, time_dec: u64) {
-        self.time = if self.time < time_dec {
-            0
-        } else {
-            self.time - time_dec
-        }
-    }
-
-    pub fn time(&self) -> u64 {
-        self.time
-    }
-
-    pub fn formulate(&self) -> u64 {
-        let mut t = self.time;
-        while t >= 1000 {
-            if t % 1000 != 0 {
-                panic!("self.time can not divides 1000!")
-            }
-            t /= 1000;
-        }
-        t
-    }
-
-    pub fn step_decrease(&mut self) {
-        self.time = match self.formulate() {
-            1 | 10 | 100 => max(1, self.time / 2),
-            5 | 50 | 500 => self.time / 5,
-            _ => panic!("Invalid time step: {}", self.time),
-        }
-    }
-    pub fn step_increase(&mut self) {
-        self.time = match self.formulate() {
-            1 | 10 | 100 => self.time * 5,
-            5 | 50 | 500 => self.time * 2,
-            _ => panic!("Invalid time step: {}", self.time),
-        }
-    }
-
-    /// Check if the given string is a valid time
-    /// E.g. "100ns" or "100 ns" is a valid time
-    ///
-    /// ```
-    /// assert_eq!(is_valid("100ns"), true)
-    /// ```
-    pub fn is_valid(s: &str) -> Result<(), ParseTimeError> {
-        match Time::from_str(s) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e),
-        }
-    }
 }
 
 pub struct App<'a> {
@@ -192,90 +45,10 @@ pub struct App<'a> {
     textarea: TextArea<'a>,
 }
 
-fn parse_files(file_name: String) -> io::Result<(Module, TimescaleUnit)> {
-    let mut root = Module {
-        name: String::from("Root"),
-        depth: 1,
-        signals: vec![],
-        submodules: vec![],
-    };
-
-    let mut parser = vcd::Parser::new(BufReader::new(File::open(file_name)?));
-
-    // Parse the header and find the wires
-    let header = parser.parse_header()?;
-
-    assert!(header.timescale.unwrap().0 == 1);
-
-    header.items.iter().for_each(|x| {
-        use ScopeItem::*;
-        match x {
-            Scope(scope) => {
-                root.submodules
-                    .push(Module::from_scope(scope, root.depth + 1));
-            }
-            Var(var) => {
-                root.signals.push(Signal::from_var(var));
-            }
-            _ => {}
-        }
-    });
-
-    let mut cur_time_stamp = 0;
-    for command_result in parser {
-        let command = command_result?;
-        use vcd::Command::*;
-        match command {
-            Timestamp(t) => {
-                cur_time_stamp = t;
-            }
-            ChangeScalar(id, value) => {
-                root.add_event(id, cur_time_stamp, ValueType::Value(value));
-            }
-            ChangeVector(id, vector) => {
-                root.add_event(id, cur_time_stamp, ValueType::Vector(vector));
-            }
-            _ => (),
-        }
-    }
-
-    Ok((root, header.timescale.unwrap().1))
-}
-
-fn middle_str<'a>(length: usize, mid_str: String) -> Vec<Span<'a>> {
-    let len = mid_str.len();
-    if len > length {
-        return vec![Span::styled("␩", Style::default()); length];
-    }
-    let mut arr = vec![];
-    for _ in 0..length {
-        arr.push(Span::styled(" ", Style::default()));
-    }
-    // ␩
-    arr.splice(
-        length / 2 - len / 2..length / 2 - len / 2 + len,
-        mid_str
-            .chars()
-            .map(|x| Span::styled(x.to_string(), Style::default())),
-    );
-
-    assert!(arr.len() == length);
-
-    arr
-}
-
-fn vector_contain_x_or_z(vector: &Vector) -> bool {
-    vector
-        .iter()
-        .find(|&x| x == Value::X || x == Value::Z)
-        .iter()
-        .count()
-        != 0
-}
-
 impl<'a> App<'a> {
     pub fn default() -> io::Result<Self> {
-        let (module_root, time_base_scale) = parse_files(String::from("./src/test_1.vcd"))?;
+        let (module_root, time_base_scale) =
+            parse_files(String::from("./assets/verilog/test_1.vcd"))?;
         Ok(Self {
             mode: AppMode::Run,
             module_root,
@@ -367,7 +140,7 @@ impl<'a> App<'a> {
         frame.render_widget(time_show, name_stamp_layouts[1]);
 
         // Display signals
-        for (index, signal) in signals.iter().enumerate() {
+        for (index, &signal) in signals.iter().enumerate() {
             let mut signal_event_lines = self.get_lines_from_a_signal(signal);
             signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(signal)));
 
@@ -471,20 +244,16 @@ impl<'a> App<'a> {
             .events_arr_in_range(self.time_start.time(), self.time_step.time(), self.arr_size)
             .iter()
             .map(|x| match x {
-                crate::signal::DisplayEvent::Value(value_display_event) => {
-                    match value_display_event {
-                        crate::signal::ValueDisplayEvent::ChangeEvent(value) => value.to_string(),
-                        crate::signal::ValueDisplayEvent::Stay(value) => value.to_string(),
-                        _ => "T".to_string(),
-                    }
-                }
-                crate::signal::DisplayEvent::Vector(vector_display_event) => {
-                    match vector_display_event {
-                        crate::signal::VectorDisplayEvent::ChangeEvent(value) => value.to_string(),
-                        crate::signal::VectorDisplayEvent::Stay(value) => value.to_string(),
-                        _ => "T".to_string(),
-                    }
-                }
+                DisplayEvent::Value(value_display_event) => match value_display_event {
+                    ValueDisplayEvent::ChangeEvent(value) => value.to_string(),
+                    ValueDisplayEvent::Stay(value) => value.to_string(),
+                    _ => "T".to_string(),
+                },
+                DisplayEvent::Vector(vector_display_event) => match vector_display_event {
+                    VectorDisplayEvent::ChangeEvent(value) => value.to_string(),
+                    VectorDisplayEvent::Stay(value) => value.to_string(),
+                    _ => "T".to_string(),
+                },
             })
             .collect::<String>()
     }
@@ -501,7 +270,7 @@ impl<'a> App<'a> {
 
         let mut lines = display_event_arr.iter().fold(vec![], |mut lines, event| {
             match event {
-                crate::signal::DisplayEvent::Value(value_display_event) => {
+                DisplayEvent::Value(value_display_event) => {
                     if lines.len() == 0 {
                         lines.push(vec![]);
                         lines.push(vec![]);
@@ -509,7 +278,7 @@ impl<'a> App<'a> {
                     let [mut line0, mut line1] = lines.try_into().unwrap();
 
                     match value_display_event {
-                        crate::signal::ValueDisplayEvent::ChangeEvent(value) => match value {
+                        ValueDisplayEvent::ChangeEvent(value) => match value {
                             Value::V1 => {
                                 line0.push(Span::styled(
                                     RISING_EDGE.first_line,
@@ -539,13 +308,13 @@ impl<'a> App<'a> {
                                 line1.push(Span::styled("z", Style::default().fg(color_red)));
                             }
                         },
-                        crate::signal::ValueDisplayEvent::MultipleEvent => {
+                        ValueDisplayEvent::MultipleEvent => {
                             line0.push(Span::styled("␩", Style::default().fg(color_green)));
                             line1.push(Span::styled("␩", Style::default().fg(color_green)));
                             // line1.push(Span::styled("␨", Style::default().fg(color_green)));
                             // line1.push(Span::styled("␨", Style::default().fg(color_green)));
                         }
-                        crate::signal::ValueDisplayEvent::Stay(value) => match value {
+                        ValueDisplayEvent::Stay(value) => match value {
                             Value::V1 => {
                                 line0.push(Span::styled("─", Style::default().fg(color_green)));
                                 line1.push(Span::styled(" ", Style::default().fg(color_green)));
@@ -566,7 +335,7 @@ impl<'a> App<'a> {
                     }
                     vec![line0, line1]
                 }
-                crate::signal::DisplayEvent::Vector(vector_display_event) => {
+                DisplayEvent::Vector(vector_display_event) => {
                     if lines.len() == 0 {
                         lines.push(vec![]);
                         lines.push(vec![]);
@@ -575,17 +344,17 @@ impl<'a> App<'a> {
                     let [mut line0, mut line1, mut line2] = lines.try_into().unwrap();
 
                     match vector_display_event {
-                        signal::VectorDisplayEvent::ChangeEvent(_) => {
+                        VectorDisplayEvent::ChangeEvent(_) => {
                             line0.push(Span::styled("┬", Style::default().fg(color_green)));
                             line1.push(Span::styled("│", Style::default().fg(color_green)));
                             line2.push(Span::styled("┴", Style::default().fg(color_green)));
                         }
-                        signal::VectorDisplayEvent::MultipleEvent => {
+                        VectorDisplayEvent::MultipleEvent => {
                             line0.push(Span::styled("␩", Style::default().fg(color_green)));
                             line1.push(Span::styled("␩", Style::default().fg(color_green)));
                             line2.push(Span::styled("␩", Style::default().fg(color_green)));
                         }
-                        signal::VectorDisplayEvent::Stay(vector) => {
+                        VectorDisplayEvent::Stay(vector) => {
                             let color = match vector_contain_x_or_z(vector) {
                                 true => color_red,
                                 false => color_green,
@@ -607,9 +376,9 @@ impl<'a> App<'a> {
             .iter()
             .enumerate()
             .for_each(|(i, event)| match event {
-                signal::DisplayEvent::Value(_) => {}
-                signal::DisplayEvent::Vector(vector_display_event) => match vector_display_event {
-                    signal::VectorDisplayEvent::ChangeEvent(vector) => {
+                DisplayEvent::Value(_) => {}
+                DisplayEvent::Vector(vector_display_event) => match vector_display_event {
+                    VectorDisplayEvent::ChangeEvent(vector) => {
                         match start_index {
                             Some(index) => {
                                 lines[1].splice(
@@ -626,8 +395,8 @@ impl<'a> App<'a> {
                         start_index = Some(i);
                         vector_value = Some(vector.clone());
                     }
-                    signal::VectorDisplayEvent::MultipleEvent => {}
-                    signal::VectorDisplayEvent::Stay(vector) => match start_index {
+                    VectorDisplayEvent::MultipleEvent => {}
+                    VectorDisplayEvent::Stay(vector) => match start_index {
                         None => {
                             start_index = Some(i);
                             vector_value = Some(vector.clone());
@@ -639,10 +408,9 @@ impl<'a> App<'a> {
 
         // Last vector
         if let Some(index) = start_index {
-            use signal::VectorDisplayEvent::*;
+            use VectorDisplayEvent::*;
             match &display_event_arr[index] {
-                signal::DisplayEvent::Vector(ChangeEvent(_))
-                | signal::DisplayEvent::Vector(Stay(_)) => {
+                DisplayEvent::Vector(ChangeEvent(_)) | DisplayEvent::Vector(Stay(_)) => {
                     let len = lines[1].len();
                     lines[1].splice(
                         index + 1..len,

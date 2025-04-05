@@ -1,10 +1,9 @@
 use core::fmt;
 use std::fmt::Display;
 
-use crate::signal::Signal;
-use crate::signal::ValueType;
-
 use vcd::{IdCode, Scope, ScopeItem, ScopeType};
+
+use super::signal::{Signal, ValueType};
 
 pub struct Module {
     pub(crate) name: String,

@@ -1,13 +1,7 @@
 use cli_log::*;
+use vcd_rs::app::App;
 
 use std::io;
-mod module;
-pub use module::Module;
-mod app;
-pub use app::App;
-
-mod signal;
-pub use signal::Signal;
 
 fn main() -> io::Result<()> {
     init_cli_log!();
