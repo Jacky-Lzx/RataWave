@@ -1,10 +1,12 @@
 use crate::{
     modules::{
         module::Module,
-        signal::{
-            DisplayEvent, FALLING_EDGE, RISING_EDGE, Signal, ValueDisplayEvent, VectorDisplayEvent,
-        },
+        signal::{DisplayEvent, Signal, ValueDisplayEvent, VectorDisplayEvent},
         time::Time,
+    },
+    ui::{
+        M_CHANGE, M_MULTIPLE, M_STAY, S_FALLING_EDGE, S_MULTIPLE, S_RISING_EDGE, S_STAY_0,
+        S_STAY_1, S_STAY_X, S_STAY_Z,
     },
     utils::{middle_str, parse_files, vector_contain_x_or_z},
 };
@@ -298,104 +300,59 @@ impl<'a> App<'a> {
         .into();
 
         let mut lines = display_event_arr.iter().fold(vec![], |mut lines, event| {
+            if lines.len() == 0 {
+                lines = match event {
+                    DisplayEvent::Value(_) => vec![vec![]; 2],
+                    DisplayEvent::Vector(_) => vec![vec![]; 3],
+                };
+            }
+
             match event {
                 DisplayEvent::Value(value_display_event) => {
-                    if lines.len() == 0 {
-                        lines.push(vec![]);
-                        lines.push(vec![]);
-                    }
-                    let [mut line0, mut line1] = lines.try_into().unwrap();
-
-                    match value_display_event {
-                        ValueDisplayEvent::ChangeEvent(value) => match value {
-                            Value::V1 => {
-                                line0.push(Span::styled(
-                                    RISING_EDGE.first_line,
-                                    Style::default().fg(color_green),
-                                ));
-                                line1.push(Span::styled(
-                                    RISING_EDGE.second_line,
-                                    Style::default().fg(color_green),
-                                ));
-                            }
-                            Value::V0 => {
-                                line0.push(Span::styled(
-                                    FALLING_EDGE.first_line,
-                                    Style::default().fg(color_green),
-                                ));
-                                line1.push(Span::styled(
-                                    FALLING_EDGE.second_line,
-                                    Style::default().fg(color_green),
-                                ));
-                            }
-                            Value::X => {
-                                line0.push(Span::styled("x", Style::default().fg(color_red)));
-                                line1.push(Span::styled("x", Style::default().fg(color_red)));
-                            }
-                            Value::Z => {
-                                line0.push(Span::styled("z", Style::default().fg(color_red)));
-                                line1.push(Span::styled("z", Style::default().fg(color_red)));
-                            }
-                        },
-                        ValueDisplayEvent::MultipleEvent => {
-                            line0.push(Span::styled("␩", Style::default().fg(color_green)));
-                            line1.push(Span::styled("␩", Style::default().fg(color_green)));
-                            // line1.push(Span::styled("␨", Style::default().fg(color_green)));
-                            // line1.push(Span::styled("␨", Style::default().fg(color_green)));
+                    let (symbols, color) = match value_display_event {
+                        ValueDisplayEvent::ChangeEvent(value) => {
+                            let symbols = match value {
+                                Value::V0 => S_FALLING_EDGE,
+                                Value::V1 => S_RISING_EDGE,
+                                Value::X => S_STAY_X,
+                                Value::Z => S_STAY_Z,
+                            };
+                            (symbols, color_green)
                         }
-                        ValueDisplayEvent::Stay(value) => match value {
-                            Value::V1 => {
-                                line0.push(Span::styled("─", Style::default().fg(color_green)));
-                                line1.push(Span::styled(" ", Style::default().fg(color_green)));
-                            }
-                            Value::V0 => {
-                                line0.push(Span::styled(" ", Style::default().fg(color_green)));
-                                line1.push(Span::styled("─", Style::default().fg(color_green)));
-                            }
-                            Value::X => {
-                                line0.push(Span::styled("x", Style::default().fg(color_red)));
-                                line1.push(Span::styled("x", Style::default().fg(color_red)));
-                            }
-                            Value::Z => {
-                                line0.push(Span::styled("z", Style::default().fg(color_red)));
-                                line1.push(Span::styled("z", Style::default().fg(color_red)));
-                            }
-                        },
-                    }
-                    vec![line0, line1]
+                        ValueDisplayEvent::Stay(value) => {
+                            let symbols = match value {
+                                Value::V0 => S_STAY_0,
+                                Value::V1 => S_STAY_1,
+                                Value::X => S_STAY_X,
+                                Value::Z => S_STAY_Z,
+                            };
+                            (symbols, color_green)
+                        }
+                        ValueDisplayEvent::MultipleEvent => (S_MULTIPLE, color_green),
+                    };
+                    lines.iter_mut().enumerate().for_each(|(i, x)| {
+                        x.push(Span::styled(symbols[i], Style::default().fg(color)));
+                    });
                 }
                 DisplayEvent::Vector(vector_display_event) => {
-                    if lines.len() == 0 {
-                        lines.push(vec![]);
-                        lines.push(vec![]);
-                        lines.push(vec![]);
-                    }
-                    let [mut line0, mut line1, mut line2] = lines.try_into().unwrap();
-
-                    match vector_display_event {
-                        VectorDisplayEvent::ChangeEvent(_) => {
-                            line0.push(Span::styled("┬", Style::default().fg(color_green)));
-                            line1.push(Span::styled("│", Style::default().fg(color_green)));
-                            line2.push(Span::styled("┴", Style::default().fg(color_green)));
-                        }
-                        VectorDisplayEvent::MultipleEvent => {
-                            line0.push(Span::styled("␩", Style::default().fg(color_green)));
-                            line1.push(Span::styled("␩", Style::default().fg(color_green)));
-                            line2.push(Span::styled("␩", Style::default().fg(color_green)));
-                        }
+                    let (symbols, color) = match vector_display_event {
+                        VectorDisplayEvent::ChangeEvent(_) => (M_CHANGE, color_green),
                         VectorDisplayEvent::Stay(vector) => {
                             let color = match vector_contain_x_or_z(vector) {
                                 true => color_red,
                                 false => color_green,
                             };
-                            line0.push(Span::styled("─", Style::default().fg(color)));
-                            line1.push(Span::styled(" ", Style::default().fg(color)));
-                            line2.push(Span::styled("─", Style::default().fg(color)));
+                            (M_STAY, color)
                         }
-                    }
-                    vec![line0, line1, line2]
+                        VectorDisplayEvent::MultipleEvent => (M_MULTIPLE, color_green),
+                    };
+                    lines.iter_mut().enumerate().for_each(|(i, x)| {
+                        x.push(Span::styled(symbols[i], Style::default().fg(color)));
+                    });
                 }
-            }
+            };
+
+            lines
         });
 
         // Show binary values for Vector signals in the middle line

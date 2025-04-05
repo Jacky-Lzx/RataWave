@@ -49,41 +49,6 @@ impl PartialEq<ValueType> for DisplayEvent {
     }
 }
 
-// impl Debug for DisplayEvent {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         todo!()
-//     }
-// }
-
-pub struct EdgeRepresentation {
-    pub first_line: &'static str,
-    pub second_line: &'static str,
-}
-
-/// For one-bit signal, the waveform is represented in two lines.
-/// `RISING_EDGE` consists of the characters for the first and second line, respectively.
-/// It looks as follows
-/// ```text
-///       ┌
-///       ┘
-/// ```
-pub const RISING_EDGE: EdgeRepresentation = EdgeRepresentation {
-    first_line: "┌",
-    second_line: "┘",
-};
-
-/// For one-bit signal, the waveform is represented in two lines.
-/// `FALLING_EDGE` consists of the characters for the first and second line, respectively.
-/// It looks as follows
-/// ```text
-///       ┐
-///       └
-/// ```
-pub const FALLING_EDGE: EdgeRepresentation = EdgeRepresentation {
-    first_line: "┐",
-    second_line: "└",
-};
-
 /// Convert a `Vector` value to its decimal value
 /// Return None if the vector contains `x` or `z`
 pub fn vector_to_base_10(vector: &Vector) -> Option<u64> {

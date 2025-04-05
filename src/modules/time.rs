@@ -1,6 +1,5 @@
 use std::{cmp::max, fmt::Display, ops::Add, str::FromStr};
 
-use cli_log::debug;
 use vcd::TimescaleUnit;
 
 #[derive(Clone)]
@@ -71,7 +70,6 @@ impl FromStr for Time {
         }
 
         let time = time * (TimescaleUnit::PS.divisor() / unit.divisor()) as f64;
-        debug!("Time: {}", time);
         if time.fract() != 0.0 {
             return Err(ParseTimeError {
                 message: "Time must be an integer in ps".to_string(),
