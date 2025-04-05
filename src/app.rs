@@ -19,7 +19,7 @@ use cli_log::debug;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Flex, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{self, Block, Borders, Paragraph},
@@ -162,28 +162,51 @@ impl<'a> App<'a> {
                 .get_color(catppuccin::ColorName::Red))
             .into();
 
-            match Time::is_valid(&self.textarea.lines()[0]) {
+            let color_text = (*catppuccin::PALETTE
+                .mocha
+                .get_color(catppuccin::ColorName::Text))
+            .into();
+
+            let input = &self.textarea.lines()[0];
+
+            match Time::is_valid(input) {
                 Ok(_) => {
                     self.textarea.set_style(Style::default().fg(color_green));
                     self.textarea.set_block(
                         Block::default()
                             .border_style(color_green)
                             .borders(Borders::ALL)
-                            .title("Valid time"),
+                            .title("Enter a time (e.g. 100ns) [Valid]"),
                     );
                 }
                 Err(e) => {
-                    self.textarea.set_style(Style::default().fg(color_red));
-                    self.textarea.set_block(
-                        Block::default()
-                            .border_style(color_red)
-                            .borders(Borders::ALL)
-                            .title(format!("{}! Please Enter a valid time like \"100ns\"", e)),
-                    );
+                    if input.len() == 0 {
+                        self.textarea.set_style(Style::default().fg(color_text));
+                        self.textarea.set_block(
+                            Block::default()
+                                .border_style(color_text)
+                                .borders(Borders::ALL)
+                                .title(format!("Enter a time (e.g. 100ns)")),
+                        );
+                    } else {
+                        self.textarea.set_style(Style::default().fg(color_red));
+                        self.textarea.set_block(
+                            Block::default()
+                                .border_style(color_red)
+                                .borders(Borders::ALL)
+                                .title(format!(
+                                    "Enter a time (e.g. 100ns) [Invalid: {}]",
+                                    e.message()
+                                )),
+                        );
+                    }
                 }
             };
-            // let block = Block::bordered().title("Popup");
-            let area = popup_area(frame.area(), 60, 20);
+
+            let vertical = Layout::vertical([Constraint::Max(3)]).flex(Flex::Start);
+            let horizontal = Layout::horizontal([Constraint::Max(80)]).flex(Flex::Center);
+            let [area] = vertical.areas(frame.area());
+            let [area] = horizontal.areas(area);
             frame.render_widget(widgets::Clear, area); //this clears out the background
             frame.render_widget(&self.textarea, area);
         }
@@ -213,26 +236,20 @@ impl<'a> App<'a> {
                     self.mode = AppMode::Input;
                     // Initialize textarea
                     self.textarea = TextArea::default();
-                    self.textarea
-                        .set_style(Style::default().fg(Color::LightGreen));
-                    self.textarea.set_block(
-                        Block::default()
-                            .border_style(Color::LightGreen)
-                            .borders(Borders::ALL)
-                            .title("Enter a time"),
-                    );
-                    self.textarea.set_cursor_line_style(Style::default());
                 }
                 _ => {}
             },
 
             AppMode::Input => match key_event.code {
-                KeyCode::Esc | KeyCode::Enter => {
+                // When pressing Esc, directly return to the normal mode
+                KeyCode::Esc => {
+                    self.mode = AppMode::Run;
+                }
+                KeyCode::Enter => {
                     if Time::is_valid(self.textarea.lines()[0].as_str()).is_ok() {
                         self.mode = AppMode::Run;
                         let text = self.textarea.lines(); // Get input text
                         let text = text.first().unwrap();
-                        debug!("input text: {:?}", text);
                         let time = Time::from_str(text).unwrap();
                         self.time_start = time;
                     }

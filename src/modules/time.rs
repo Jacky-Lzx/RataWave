@@ -155,6 +155,11 @@ impl Time {
     }
 }
 
+impl ParseTimeError {
+    pub fn message(&self) -> &str {
+        self.message.as_str()
+    }
+}
 impl Display for ParseTimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Parse time error: {}", self.message)
