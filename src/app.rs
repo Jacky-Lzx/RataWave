@@ -17,6 +17,7 @@ use std::{
     rc::Rc,
 };
 
+use cli_log::debug;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
@@ -34,6 +35,7 @@ enum AppMode {
     Run,
     Input,
     Exit,
+    AddSignal,
 }
 
 pub struct App<'a> {
@@ -50,6 +52,7 @@ impl<'a> App<'a> {
     pub fn default() -> io::Result<Self> {
         let (module_root, time_base_scale) =
             parse_files(String::from("./assets/verilog/test_1.vcd"))?;
+        debug!("Root: {}", module_root);
         Ok(Self {
             mode: AppMode::Run,
             module_root,
@@ -210,12 +213,23 @@ impl<'a> App<'a> {
             let [area] = horizontal.areas(area);
             frame.render_widget(widgets::Clear, area); //this clears out the background
             frame.render_widget(&self.textarea, area);
+        } else if self.mode == AppMode::AddSignal {
+            let vertical = Layout::vertical([Constraint::Max(30)]).flex(Flex::Center);
+            let horizontal = Layout::horizontal([Constraint::Max(80)]).flex(Flex::Center);
+            let [area] = vertical.areas(frame.area());
+            let [area] = horizontal.areas(area);
+            frame.render_widget(widgets::Clear, area); //this clears out the background
+            let par = Paragraph::new("").block(Block::default().borders(Borders::ALL));
+            frame.render_widget(par, area);
         }
     }
 
     fn handle_key_event(&mut self, key_event: event::KeyEvent) -> io::Result<()> {
         match self.mode {
             AppMode::Run => match key_event.code {
+                KeyCode::Char('a') => {
+                    self.mode = AppMode::AddSignal;
+                }
                 KeyCode::Char('q') => {
                     self.mode = AppMode::Exit;
                 }
@@ -258,6 +272,12 @@ impl<'a> App<'a> {
                 _ => {
                     self.textarea.input(key_event);
                 }
+            },
+            AppMode::AddSignal => match key_event.code {
+                KeyCode::Esc => {
+                    self.mode = AppMode::Run;
+                }
+                _ => {}
             },
             _ => {}
         }

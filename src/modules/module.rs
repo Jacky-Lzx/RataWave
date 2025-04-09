@@ -5,6 +5,8 @@ use vcd::{IdCode, Scope, ScopeItem, ScopeType};
 
 use super::signal::{Signal, ValueType};
 
+/// A module struct representing modules in the VCD file.
+/// A root module is created to contain the top-level signals.
 pub struct Module {
     pub(crate) name: String,
     pub(crate) depth: u8,
