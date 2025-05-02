@@ -13,7 +13,7 @@ use crate::{
 
 use std::{
     cell::RefCell,
-    cmp::min,
+    cmp::{max, min},
     io::{self},
     rc::Rc,
 };
@@ -23,7 +23,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
     layout::{Constraint, Direction, Flex, Layout, Rect},
-    style::Style,
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{self, Block, Borders, Paragraph},
 };
@@ -41,13 +41,27 @@ enum AppMode {
 
 pub struct App<'a> {
     module_root: Module,
+    signals: Vec<Rc<RefCell<Signal>>>,
     displayed_signals: Vec<Rc<RefCell<Signal>>>,
+    undisplayed_signals: Vec<Rc<RefCell<Signal>>>,
     time_start: Time,
     time_step: Time,
     arr_size: usize,
     // time_scale: TimescaleUnit,
     mode: AppMode,
+    choice_index: usize,
     textarea: TextArea<'a>,
+}
+
+fn filter_displayed_signals(
+    all_signals: &Vec<Rc<RefCell<Signal>>>,
+    displayed_signals: &Vec<Rc<RefCell<Signal>>>,
+) -> Vec<Rc<RefCell<Signal>>> {
+    all_signals
+        .iter()
+        .filter(|e2| !displayed_signals.iter().any(|e1| Rc::ptr_eq(e1, e2)))
+        .cloned()
+        .collect()
 }
 
 impl<'a> App<'a> {
@@ -55,13 +69,19 @@ impl<'a> App<'a> {
         let (module_root, time_base_scale) =
             parse_files(String::from("./assets/verilog/test_1.vcd"))?;
         debug!("Root: {}", module_root);
+        let signals = module_root.get_signals();
+        let undisplayed_signals = filter_displayed_signals(&signals, &vec![]);
+
         Ok(Self {
             mode: AppMode::Run,
             module_root,
+            signals,
             displayed_signals: vec![],
+            undisplayed_signals,
             time_start: Time::new(0, time_base_scale),
             time_step: Time::new(10, time_base_scale),
             arr_size: 100,
+            choice_index: 0,
             textarea: TextArea::default(),
         })
     }
@@ -85,8 +105,6 @@ impl<'a> App<'a> {
             .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
             .split(frame.area());
 
-        let signals = self.module_root.get_signals();
-
         let name_stamp_layouts = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Fill(1), Constraint::Fill(9)].as_ref())
@@ -94,7 +112,11 @@ impl<'a> App<'a> {
 
         let signal_layouts = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Max(4); signals.len()])
+            .constraints(vec![
+                Constraint::Max(4);
+                // FIXME: if displayed_signals = 0, it will crash, so adding a max here
+                max(1, self.displayed_signals.len())
+            ])
             .split(main_layouts[1]);
 
         let signal_layouts: Vec<Rc<[Rect]>> = signal_layouts
@@ -229,7 +251,27 @@ impl<'a> App<'a> {
             let [area] = vertical.areas(frame.area());
             let [area] = horizontal.areas(area);
             frame.render_widget(widgets::Clear, area); //this clears out the background
-            let par = Paragraph::new("").block(Block::default().borders(Borders::ALL));
+
+            let undisplayed_signals: Vec<Span> = self
+                .undisplayed_signals
+                .iter()
+                .enumerate()
+                .map(|(i, x)| {
+                    Span::styled(
+                        x.borrow().output_name().clone(),
+                        if i == self.choice_index {
+                            Style::default().fg(Color::Blue)
+                        } else {
+                            Style::default()
+                        },
+                    )
+                })
+                .collect();
+            let lines: Vec<Line> = undisplayed_signals
+                .iter()
+                .map(|x| Line::from(x.clone()))
+                .collect();
+            let par = Paragraph::new(lines).block(Block::default().borders(Borders::ALL));
             frame.render_widget(par, area);
         }
     }
@@ -238,14 +280,8 @@ impl<'a> App<'a> {
         match self.mode {
             AppMode::Run => match key_event.code {
                 KeyCode::Char('a') => {
-                    // self.mode = AppMode::AddSignal;
-                    let signals = self.module_root.get_signals();
-                    let length = self.displayed_signals.len();
-
-                    if length < signals.len() {
-                        self.displayed_signals
-                            .push(Rc::clone(signals.get(length).unwrap()));
-                    }
+                    self.mode = AppMode::AddSignal;
+                    self.choice_index = 0;
                 }
                 KeyCode::Char('q') => {
                     self.mode = AppMode::Exit;
@@ -293,6 +329,26 @@ impl<'a> App<'a> {
             AppMode::AddSignal => match key_event.code {
                 KeyCode::Esc => {
                     self.mode = AppMode::Run;
+                }
+                KeyCode::Char('q') => {
+                    self.mode = AppMode::Run;
+                }
+                KeyCode::Char('j') => {
+                    self.choice_index += 1;
+                    self.choice_index = min(self.choice_index, self.undisplayed_signals.len() - 1);
+                }
+                KeyCode::Char('k') => {
+                    self.choice_index = max(1, self.choice_index) - 1;
+                }
+                KeyCode::Enter => {
+                    self.displayed_signals.push(Rc::clone(
+                        self.undisplayed_signals.get(self.choice_index).unwrap(),
+                    ));
+                    self.undisplayed_signals.remove(self.choice_index);
+                    if self.undisplayed_signals.len() > 0 {
+                        self.choice_index =
+                            min(self.choice_index, self.undisplayed_signals.len() - 1)
+                    }
                 }
                 _ => {}
             },
