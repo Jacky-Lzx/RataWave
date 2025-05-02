@@ -12,6 +12,7 @@ use crate::{
 };
 
 use std::{
+    cell::RefCell,
     cmp::min,
     io::{self},
     rc::Rc,
@@ -40,6 +41,7 @@ enum AppMode {
 
 pub struct App<'a> {
     module_root: Module,
+    displayed_signals: Vec<Rc<RefCell<Signal>>>,
     time_start: Time,
     time_step: Time,
     arr_size: usize,
@@ -56,6 +58,7 @@ impl<'a> App<'a> {
         Ok(Self {
             mode: AppMode::Run,
             module_root,
+            displayed_signals: vec![],
             time_start: Time::new(0, time_base_scale),
             time_step: Time::new(10, time_base_scale),
             arr_size: 100,
@@ -144,13 +147,20 @@ impl<'a> App<'a> {
         frame.render_widget(time_show, name_stamp_layouts[1]);
 
         // Display signals
-        for (index, &signal) in signals.iter().enumerate() {
-            let mut signal_event_lines = self.get_lines_from_a_signal(signal);
-            signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(signal)));
+        for (index, signal) in self.displayed_signals.iter().enumerate() {
+            let signal = signal.borrow();
+            let mut signal_event_lines = self.get_lines_from_a_signal(&signal);
+            signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(&signal)));
 
             let signal_graph = Paragraph::new(signal_event_lines);
 
-            let signal_name = Line::from(signals.get(index).unwrap().output_name());
+            let signal_name = Line::from(
+                self.displayed_signals
+                    .get(index)
+                    .unwrap()
+                    .borrow()
+                    .output_name(),
+            );
 
             frame.render_widget(signal_name, signal_layouts[index][0]);
             frame.render_widget(signal_graph, signal_layouts[index][1]);
@@ -228,7 +238,14 @@ impl<'a> App<'a> {
         match self.mode {
             AppMode::Run => match key_event.code {
                 KeyCode::Char('a') => {
-                    self.mode = AppMode::AddSignal;
+                    // self.mode = AppMode::AddSignal;
+                    let signals = self.module_root.get_signals();
+                    let length = self.displayed_signals.len();
+
+                    if length < signals.len() {
+                        self.displayed_signals
+                            .push(Rc::clone(signals.get(length).unwrap()));
+                    }
                 }
                 KeyCode::Char('q') => {
                     self.mode = AppMode::Exit;

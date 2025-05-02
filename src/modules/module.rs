@@ -1,5 +1,5 @@
 use core::fmt;
-use std::fmt::Display;
+use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 use vcd::{IdCode, Scope, ScopeItem, ScopeType};
 
@@ -10,7 +10,7 @@ use super::signal::{Signal, ValueType};
 pub struct Module {
     pub(crate) name: String,
     pub(crate) depth: u8,
-    pub(crate) signals: Vec<Signal>,
+    pub(crate) signals: Vec<Rc<RefCell<Signal>>>,
     pub(crate) submodules: Vec<Module>,
 }
 
@@ -23,7 +23,7 @@ impl Module {
         for scope_type in &scope.items {
             match scope_type {
                 ScopeItem::Var(var) => {
-                    signals.push(Signal::from_var(var));
+                    signals.push(Rc::new(RefCell::new(Signal::from_var(var))));
                 }
                 ScopeItem::Scope(sub_scope) => {
                     sub_modules.push(Module::from_scope(sub_scope, depth + 1))
@@ -54,7 +54,7 @@ impl Display for Module {
             for _ in 0..self.depth {
                 write!(f, "  ")?;
             }
-            write!(f, "{x}")?;
+            write!(f, "{}", x.borrow())?;
             Ok(())
         })?;
 
@@ -73,16 +73,17 @@ impl Module {
     pub fn add_event(&mut self, id: IdCode, timestamp: u64, value: ValueType) {
         self.signals
             .iter_mut()
-            .filter(|x| x.code == id)
-            .for_each(|x| x.add_event(timestamp, value.clone()));
+            .filter(|x| x.borrow_mut().code == id)
+            .for_each(|x| x.borrow_mut().add_event(timestamp, value.clone()));
 
         self.submodules
             .iter_mut()
             .for_each(|x| x.add_event(id, timestamp, value.clone()));
     }
 
-    pub fn get_signals(&self) -> Vec<&Signal> {
-        let mut signal_vec: Vec<&Signal> = self.signals.iter().map(|x| x).collect();
+    pub fn get_signals(&self) -> Vec<Rc<RefCell<Signal>>> {
+        let mut signal_vec: Vec<Rc<RefCell<Signal>>> =
+            self.signals.iter().map(|x| Rc::clone(x)).collect();
 
         self.submodules
             .iter()
@@ -94,7 +95,7 @@ impl Module {
     pub fn max_time(&self) -> u64 {
         let mut max_time = 0;
         self.signals.iter().for_each(|x| {
-            if let Some(time) = x.events.last() {
+            if let Some(time) = x.borrow().events.last() {
                 if time.0 > max_time {
                     max_time = time.0;
                 }

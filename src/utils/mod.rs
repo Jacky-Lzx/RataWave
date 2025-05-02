@@ -1,6 +1,8 @@
 use std::{
+    cell::RefCell,
     fs::File,
     io::{self, BufReader},
+    rc::Rc,
 };
 
 use ratatui::{
@@ -38,7 +40,8 @@ pub fn parse_files(file_name: String) -> io::Result<(Module, TimescaleUnit)> {
                     .push(Module::from_scope(scope, root.depth + 1));
             }
             Var(var) => {
-                root.signals.push(Signal::from_var(var));
+                root.signals
+                    .push(Rc::new(RefCell::new(Signal::from_var(var))));
             }
             _ => {}
         }
