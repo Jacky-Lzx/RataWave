@@ -73,7 +73,7 @@ impl<'a> App<'a> {
         let undisplayed_signals = filter_displayed_signals(&signals, &vec![]);
 
         Ok(Self {
-            mode: AppMode::Run,
+            mode: AppMode::AddSignal,
             module_root,
             signals,
             displayed_signals: vec![],
@@ -271,7 +271,11 @@ impl<'a> App<'a> {
                 .iter()
                 .map(|x| Line::from(x.clone()))
                 .collect();
-            let par = Paragraph::new(lines).block(Block::default().borders(Borders::ALL));
+            let par = Paragraph::new(lines).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title_top("Add signals, press 'q' to exit"),
+            );
             frame.render_widget(par, area);
         }
     }

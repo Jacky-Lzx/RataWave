@@ -10,5 +10,5 @@ A terminal-based waveform previewer built with Rust and Ratatui.
 - [x] Zoom in/out and navigate along the time scale
 - [ ] Jump to the next rising/falling edge
 - [x] Jump to a specified time
-- [ ] Select which signals to display
+- [x] Select which signals to display
 - [ ] Expand multi-bit vectors to single-bit signals for display
