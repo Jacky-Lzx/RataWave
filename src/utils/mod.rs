@@ -17,13 +17,14 @@ use crate::{
     signal::{Signal, ValueType},
 };
 
-pub fn parse_files(file_name: String) -> io::Result<(Module, TimescaleUnit)> {
-    let mut root = Module {
+pub fn parse_files(file_name: String) -> io::Result<(Rc<RefCell<Module>>, TimescaleUnit)> {
+    let root = Rc::new(RefCell::new(Module {
         name: String::from("Root"),
         depth: 1,
         signals: vec![],
         submodules: vec![],
-    };
+        parent: None,
+    }));
 
     let mut parser = vcd::Parser::new(BufReader::new(File::open(file_name)?));
 
@@ -36,16 +37,29 @@ pub fn parse_files(file_name: String) -> io::Result<(Module, TimescaleUnit)> {
         use ScopeItem::*;
         match x {
             Scope(scope) => {
-                root.submodules
-                    .push(Module::from_scope(scope, root.depth + 1));
+                let depth = root.borrow().depth + 1;
+                root.borrow_mut()
+                    .submodules
+                    .push(Module::from_scope(scope, depth));
             }
             Var(var) => {
-                root.signals
+                root.borrow_mut()
+                    .signals
                     .push(Rc::new(RefCell::new(Signal::from_var(var))));
             }
             _ => {}
         }
     });
+
+    root.borrow_mut()
+        .submodules
+        .iter()
+        .for_each(|x| x.borrow_mut().parent = Some(Rc::downgrade(&root)));
+
+    root.borrow_mut()
+        .signals
+        .iter()
+        .for_each(|x| x.borrow_mut().parent_module = Some(Rc::downgrade(&root)));
 
     let mut cur_time_stamp = 0;
     for command_result in parser {
@@ -56,10 +70,12 @@ pub fn parse_files(file_name: String) -> io::Result<(Module, TimescaleUnit)> {
                 cur_time_stamp = t;
             }
             ChangeScalar(id, value) => {
-                root.add_event(id, cur_time_stamp, ValueType::Value(value));
+                root.borrow_mut()
+                    .add_event(id, cur_time_stamp, ValueType::Value(value));
             }
             ChangeVector(id, vector) => {
-                root.add_event(id, cur_time_stamp, ValueType::Vector(vector));
+                root.borrow_mut()
+                    .add_event(id, cur_time_stamp, ValueType::Vector(vector));
             }
             _ => (),
         }

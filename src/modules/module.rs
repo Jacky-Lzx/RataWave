@@ -1,6 +1,11 @@
 use core::fmt;
-use std::{cell::RefCell, fmt::Display, rc::Rc};
+use std::{
+    cell::RefCell,
+    fmt::Display,
+    rc::{Rc, Weak},
+};
 
+use cli_log::debug;
 use vcd::{IdCode, Scope, ScopeItem, ScopeType};
 
 use super::signal::{Signal, ValueType};
@@ -11,11 +16,14 @@ pub struct Module {
     pub(crate) name: String,
     pub(crate) depth: u8,
     pub(crate) signals: Vec<Rc<RefCell<Signal>>>,
-    pub(crate) submodules: Vec<Module>,
+    pub(crate) submodules: Vec<Rc<RefCell<Module>>>,
+    pub(crate) parent: Option<Weak<RefCell<Module>>>,
 }
 
 impl Module {
-    pub fn from_scope(scope: &Scope, depth: u8) -> Module {
+    /// Build a module from the scope
+    /// The parent of the module is set to None
+    pub fn from_scope(scope: &Scope, depth: u8) -> Rc<RefCell<Module>> {
         assert!(scope.scope_type == ScopeType::Module);
         let mut signals = vec![];
         let mut sub_modules = vec![];
@@ -32,12 +40,27 @@ impl Module {
             }
         }
 
-        Module {
+        let module = Rc::new(RefCell::new(Module {
             name: scope.identifier.clone(),
             depth,
             signals,
             submodules: sub_modules,
-        }
+            parent: None,
+        }));
+
+        module
+            .borrow_mut()
+            .submodules
+            .iter()
+            .for_each(|x| x.borrow_mut().parent = Some(Rc::downgrade(&module)));
+
+        module
+            .borrow_mut()
+            .signals
+            .iter()
+            .for_each(|x| x.borrow_mut().parent_module = Some(Rc::downgrade(&module)));
+
+        module
     }
 }
 impl fmt::Debug for Module {
@@ -62,7 +85,7 @@ impl Display for Module {
             for _ in 0..self.depth {
                 write!(f, "  ")?;
             }
-            write!(f, "{x}")?;
+            write!(f, "{}", x.borrow())?;
             Ok(())
         })?;
         Ok(())
@@ -78,7 +101,7 @@ impl Module {
 
         self.submodules
             .iter_mut()
-            .for_each(|x| x.add_event(id, timestamp, value.clone()));
+            .for_each(|x| x.borrow_mut().add_event(id, timestamp, value.clone()));
     }
 
     pub fn get_signals(&self) -> Vec<Rc<RefCell<Signal>>> {
@@ -87,7 +110,7 @@ impl Module {
 
         self.submodules
             .iter()
-            .for_each(|x| signal_vec.extend(x.get_signals()));
+            .for_each(|x| signal_vec.extend(x.borrow().get_signals()));
 
         signal_vec
     }
@@ -103,12 +126,39 @@ impl Module {
         });
 
         self.submodules.iter().for_each(|x| {
-            let time = x.max_time();
+            let time = x.borrow().max_time();
             if time > max_time {
                 max_time = time;
             }
         });
 
         max_time
+    }
+
+    pub fn get_path_str(s: &Rc<RefCell<Module>>) -> String {
+        // Get the path of the module from the root
+        let mut path = vec![];
+        let mut node = Rc::clone(s);
+
+        while let Some(parent_weak) = {
+            let borrowed_node = node.borrow();
+            borrowed_node.parent.clone()
+        } {
+            if let Some(parent_rc) = parent_weak.upgrade() {
+                if parent_rc.borrow().parent.is_none() {
+                    break; // Stop if we reach the root module
+                }
+                path.insert(0, parent_rc.borrow().name.clone());
+                node = parent_rc;
+            } else {
+                break; // Handle the case where the parent has been dropped
+            }
+        }
+        // while let Some(parent) = node.borrow().parent.clone() {
+        //     path.insert(0, parent.upgrade().unwrap().borrow().name.clone());
+        //     node = Rc::clone(&parent.upgrade().unwrap());
+        // }
+
+        path.join("->")
     }
 }

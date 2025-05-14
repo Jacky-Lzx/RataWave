@@ -1,7 +1,9 @@
 use core::{fmt, panic};
-use std::fmt::Display;
+use std::{cell::RefCell, fmt::Display, rc::Weak};
 
 use vcd::{IdCode, Value, Var, Vector};
+
+use super::module::Module;
 
 /// Type of the signal
 /// - `Value`: the signal has only one bit
@@ -76,6 +78,7 @@ pub struct Signal {
     pub code: IdCode,
     pub name: String,
     pub events: Vec<(u64, ValueType)>,
+    pub parent_module: Option<Weak<RefCell<Module>>>,
 }
 
 impl Signal {
@@ -84,6 +87,7 @@ impl Signal {
             code: var.code,
             name: var.reference.clone(),
             events: vec![],
+            parent_module: None,
         }
     }
 
@@ -110,6 +114,14 @@ impl Display for Signal {
 impl Signal {
     pub fn output_name(&self) -> String {
         format!("{}({})", self.name, self.code)
+    }
+    pub fn output_path(&self) -> String {
+        let mut path =
+            Module::get_path_str(&self.parent_module.clone().unwrap().upgrade().unwrap());
+        if path.len() != 0 {
+            path = path + ":"
+        }
+        format!("{}{}({})", path, self.name, self.code)
     }
     pub fn output_events(&self) -> String {
         format!("{:?}", self.events)

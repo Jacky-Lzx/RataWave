@@ -40,7 +40,7 @@ enum AppMode {
 }
 
 pub struct App<'a> {
-    module_root: Module,
+    module_root: Rc<RefCell<Module>>,
     signals: Vec<Rc<RefCell<Signal>>>,
     displayed_signals: Vec<Rc<RefCell<Signal>>>,
     undisplayed_signals: Vec<Rc<RefCell<Signal>>>,
@@ -68,8 +68,8 @@ impl<'a> App<'a> {
     pub fn default() -> io::Result<Self> {
         let (module_root, time_base_scale) =
             parse_files(String::from("./assets/verilog/test_1.vcd"))?;
-        debug!("Root: {}", module_root);
-        let signals = module_root.get_signals();
+        debug!("Root: {}", module_root.borrow());
+        let signals = module_root.borrow().get_signals();
         let undisplayed_signals = filter_displayed_signals(&signals, &vec![]);
 
         Ok(Self {
@@ -258,7 +258,7 @@ impl<'a> App<'a> {
                 .enumerate()
                 .map(|(i, x)| {
                     Span::styled(
-                        x.borrow().output_name().clone(),
+                        x.borrow().output_path().clone(),
                         if i == self.choice_index {
                             Style::default().fg(Color::Blue)
                         } else {
