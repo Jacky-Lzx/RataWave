@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "tasks": [
+    {
+      "label": "RataWave",
+      "type": "shell",
+      "command": "cargo run",
+      "options": {
+        "env": {
+          "RATAWAVE_LOG": "debug"
+        }
+      }
+    }
+  ]
+}

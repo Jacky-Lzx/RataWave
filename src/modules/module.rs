@@ -5,7 +5,6 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use cli_log::debug;
 use vcd::{IdCode, Scope, ScopeItem, ScopeType};
 
 use super::signal::{Signal, ValueType};
@@ -105,8 +104,7 @@ impl Module {
     }
 
     pub fn get_signals(&self) -> Vec<Rc<RefCell<Signal>>> {
-        let mut signal_vec: Vec<Rc<RefCell<Signal>>> =
-            self.signals.iter().map(|x| Rc::clone(x)).collect();
+        let mut signal_vec: Vec<Rc<RefCell<Signal>>> = self.signals.iter().map(Rc::clone).collect();
 
         self.submodules
             .iter()
@@ -118,10 +116,10 @@ impl Module {
     pub fn max_time(&self) -> u64 {
         let mut max_time = 0;
         self.signals.iter().for_each(|x| {
-            if let Some(time) = x.borrow().events.last() {
-                if time.0 > max_time {
-                    max_time = time.0;
-                }
+            if let Some(time) = x.borrow().events.last()
+                && time.0 > max_time
+            {
+                max_time = time.0;
             }
         });
 

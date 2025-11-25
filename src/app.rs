@@ -55,8 +55,8 @@ pub struct App<'a> {
 }
 
 fn filter_displayed_signals(
-    all_signals: &Vec<Rc<RefCell<Signal>>>,
-    displayed_signals: &Vec<Rc<RefCell<Signal>>>,
+    all_signals: &[Rc<RefCell<Signal>>],
+    displayed_signals: &[Rc<RefCell<Signal>>],
 ) -> Vec<Rc<RefCell<Signal>>> {
     all_signals
         .iter()
@@ -69,8 +69,9 @@ impl<'a> App<'a> {
     pub fn default(cli_args: CliArgs) -> io::Result<Self> {
         let (module_root, time_base_scale) = parse_files(cli_args.file_path)?;
         debug!("Root: {}", module_root.borrow());
+
         let signals = module_root.borrow().get_signals();
-        let undisplayed_signals = filter_displayed_signals(&signals, &vec![]);
+        let undisplayed_signals = filter_displayed_signals(&signals, &[]);
 
         Ok(Self {
             mode: AppMode::AddSignal,
@@ -216,13 +217,13 @@ impl<'a> App<'a> {
                     );
                 }
                 Err(e) => {
-                    if input.len() == 0 {
+                    if input.is_empty() {
                         self.textarea.set_style(Style::default().fg(color_text));
                         self.textarea.set_block(
                             Block::default()
                                 .border_style(color_text)
                                 .borders(Borders::ALL)
-                                .title(format!("Enter a time (e.g. 100ns)")),
+                                .title("Enter a time (e.g. 100ns)".to_string()),
                         );
                     } else {
                         self.textarea.set_style(Style::default().fg(color_red));
@@ -349,7 +350,7 @@ impl<'a> App<'a> {
                         self.undisplayed_signals.get(self.choice_index).unwrap(),
                     ));
                     self.undisplayed_signals.remove(self.choice_index);
-                    if self.undisplayed_signals.len() > 0 {
+                    if !self.undisplayed_signals.is_empty() {
                         self.choice_index =
                             min(self.choice_index, self.undisplayed_signals.len() - 1)
                     }
@@ -380,7 +381,7 @@ impl<'a> App<'a> {
             .collect::<String>()
     }
 
-    fn get_lines_from_a_signal(&self, signal: &Signal) -> Vec<Line> {
+    fn get_lines_from_a_signal(&'_ self, signal: &Signal) -> Vec<Line<'_>> {
         let display_event_arr = signal.events_arr_in_range(
             self.time_start.time(),
             self.time_step.time(),
@@ -397,7 +398,7 @@ impl<'a> App<'a> {
         .into();
 
         let mut lines = display_event_arr.iter().fold(vec![], |mut lines, event| {
-            if lines.len() == 0 {
+            if lines.is_empty() {
                 lines = match event {
                     DisplayEvent::Value(_) => vec![vec![]; 2],
                     DisplayEvent::Vector(_) => vec![vec![]; 3],
@@ -462,30 +463,26 @@ impl<'a> App<'a> {
                 DisplayEvent::Value(_) => {}
                 DisplayEvent::Vector(vector_display_event) => match vector_display_event {
                     VectorDisplayEvent::ChangeEvent(vector) => {
-                        match start_index {
-                            Some(index) => {
-                                lines[1].splice(
-                                    index + 1..i,
-                                    middle_str(
-                                        i - index - 1,
-                                        vector_value.clone().unwrap().to_string(),
-                                    )
-                                    .into_iter(),
-                                );
-                            }
-                            None => {}
+                        if let Some(index) = start_index {
+                            lines[1].splice(
+                                index + 1..i,
+                                middle_str(
+                                    i - index - 1,
+                                    vector_value.clone().unwrap().to_string(),
+                                )
+                                .into_iter(),
+                            );
                         };
                         start_index = Some(i);
                         vector_value = Some(vector.clone());
                     }
                     VectorDisplayEvent::MultipleEvent => {}
-                    VectorDisplayEvent::Stay(vector) => match start_index {
-                        None => {
+                    VectorDisplayEvent::Stay(vector) => {
+                        if start_index.is_none() {
                             start_index = Some(i);
                             vector_value = Some(vector.clone());
                         }
-                        _ => {}
-                    },
+                    }
                 },
             });
 
@@ -504,7 +501,7 @@ impl<'a> App<'a> {
             };
         };
 
-        lines.into_iter().map(|x| Line::from(x)).collect::<Vec<_>>()
+        lines.into_iter().map(Line::from).collect::<Vec<_>>()
     }
 }
 

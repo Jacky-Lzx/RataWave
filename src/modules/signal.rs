@@ -98,7 +98,7 @@ impl Signal {
 
 impl Display for Signal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.events.len() == 0 {
+        if self.events.is_empty() {
             writeln!(f, "Signal: {}, code: {}", self.name, self.code)?;
         } else {
             writeln!(
@@ -118,8 +118,8 @@ impl Signal {
     pub fn output_path(&self) -> String {
         let mut path =
             Module::get_path_str(&self.parent_module.clone().unwrap().upgrade().unwrap());
-        if path.len() != 0 {
-            path = path + ":"
+        if !path.is_empty() {
+            path += ":"
         }
         format!("{}{}({})", path, self.name, self.code)
     }
@@ -170,9 +170,7 @@ impl Signal {
                 .get(if start_index == 0 { 0 } else { start_index - 1 })
             {
                 Some(event) => match &event.1 {
-                    ValueType::Value(value) => {
-                        DisplayEvent::Value(ValueDisplayEvent::Stay(value.clone()))
-                    }
+                    ValueType::Value(value) => DisplayEvent::Value(ValueDisplayEvent::Stay(*value)),
                     ValueType::Vector(vector) => {
                         DisplayEvent::Vector(VectorDisplayEvent::Stay(vector.clone()))
                     }
@@ -186,7 +184,7 @@ impl Signal {
             if start_index >= self.events.len() {
                 *element = match &last_event {
                     DisplayEvent::Value(ValueDisplayEvent::ChangeEvent(value)) => {
-                        DisplayEvent::Value(ValueDisplayEvent::Stay(value.clone()))
+                        DisplayEvent::Value(ValueDisplayEvent::Stay(*value))
                     }
                     DisplayEvent::Vector(VectorDisplayEvent::ChangeEvent(vector)) => {
                         DisplayEvent::Vector(VectorDisplayEvent::Stay(vector.clone()))
@@ -204,7 +202,7 @@ impl Signal {
             if self.events[start_index].0 >= end_time {
                 *element = match &last_event {
                     DisplayEvent::Value(ValueDisplayEvent::ChangeEvent(value)) => {
-                        DisplayEvent::Value(ValueDisplayEvent::Stay(value.clone()))
+                        DisplayEvent::Value(ValueDisplayEvent::Stay(*value))
                     }
                     DisplayEvent::Vector(VectorDisplayEvent::ChangeEvent(vector)) => {
                         DisplayEvent::Vector(VectorDisplayEvent::Stay(vector.clone()))

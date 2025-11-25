@@ -23,7 +23,7 @@ impl Display for Time {
             .iter()
             .rfind(|x| t >= (PS.divisor() / x.divisor()) as f64)
             .unwrap_or(&PS);
-        t = t / (PS.divisor() / scale.divisor()) as f64;
+        t /= (PS.divisor() / scale.divisor()) as f64;
         write!(f, "{}{}", t, scale)
     }
 }
@@ -42,7 +42,7 @@ impl FromStr for Time {
     type Err = ParseTimeError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        if s.len() == 0 {
+        if s.is_empty() {
             return Err(ParseTimeError {
                 message: "Empty string".to_string(),
             });
@@ -92,11 +92,7 @@ impl Time {
     }
 
     pub fn decrease(&mut self, time_dec: u64) {
-        self.time = if self.time < time_dec {
-            0
-        } else {
-            self.time - time_dec
-        }
+        self.time = self.time.saturating_sub(time_dec)
     }
 
     pub fn time(&self) -> u64 {
@@ -106,7 +102,7 @@ impl Time {
     pub fn formulate(&self) -> u64 {
         let mut t = self.time;
         while t >= 1000 {
-            if t % 1000 != 0 {
+            if !t.is_multiple_of(1000) {
                 panic!("self.time can not divides 1000!")
             }
             t /= 1000;
