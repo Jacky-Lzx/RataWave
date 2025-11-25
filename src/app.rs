@@ -33,11 +33,28 @@ use tui_textarea::TextArea;
 use vcd::{Value, Vector};
 
 #[derive(PartialEq)]
-enum AppMode {
-    Run,
-    Input,
+enum AppMode<'a> {
+    Run(Box<RunAssets>),
+    Input(Box<InputAssets<'a>>),
     Exit,
     AddSignal,
+}
+
+#[derive(PartialEq, Default)]
+struct RunAssets {
+    choice_index: usize,
+}
+
+#[derive(Default)]
+struct InputAssets<'a> {
+    textarea: TextArea<'a>,
+    choice_index: usize,
+}
+
+impl PartialEq for InputAssets<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.choice_index == other.choice_index && self.textarea.lines() == other.textarea.lines()
+    }
 }
 
 pub struct App<'a> {
@@ -49,9 +66,9 @@ pub struct App<'a> {
     time_step: Time,
     arr_size: usize,
     // time_scale: TimescaleUnit,
-    mode: AppMode,
+    mode: AppMode<'a>,
     choice_index: usize,
-    textarea: TextArea<'a>,
+    // textarea: TextArea<'a>,
 }
 
 fn filter_displayed_signals(
@@ -83,7 +100,7 @@ impl<'a> App<'a> {
             time_step: Time::new(10, time_base_scale),
             arr_size: 100,
             choice_index: 0,
-            textarea: TextArea::default(),
+            // textarea: TextArea::default(),
         })
     }
 
@@ -193,101 +210,109 @@ impl<'a> App<'a> {
             frame.render_widget(signal_graph, signal_layouts[index][1]);
         }
 
-        if self.mode == AppMode::Input {
-            let color_green = (*catppuccin::PALETTE
-                .mocha
-                .get_color(catppuccin::ColorName::Green))
-            .into();
-            let color_red = (*catppuccin::PALETTE
-                .mocha
-                .get_color(catppuccin::ColorName::Red))
-            .into();
+        match &mut self.mode {
+            AppMode::Input(assets) => {
+                let assets = assets.as_mut();
 
-            let color_text = (*catppuccin::PALETTE
-                .mocha
-                .get_color(catppuccin::ColorName::Text))
-            .into();
+                let color_green = (*catppuccin::PALETTE
+                    .mocha
+                    .get_color(catppuccin::ColorName::Green))
+                .into();
+                let color_red = (*catppuccin::PALETTE
+                    .mocha
+                    .get_color(catppuccin::ColorName::Red))
+                .into();
 
-            let input = &self.textarea.lines()[0];
+                let color_text = (*catppuccin::PALETTE
+                    .mocha
+                    .get_color(catppuccin::ColorName::Text))
+                .into();
 
-            match Time::is_valid(input) {
-                Ok(_) => {
-                    self.textarea.set_style(Style::default().fg(color_green));
-                    self.textarea.set_block(
-                        Block::default()
-                            .border_style(color_green)
-                            .borders(Borders::ALL)
-                            .title("Enter a time (e.g. 100ns) [Valid]"),
-                    );
-                }
-                Err(e) => {
-                    if input.is_empty() {
-                        self.textarea.set_style(Style::default().fg(color_text));
-                        self.textarea.set_block(
+                let input = &assets.textarea.lines()[0];
+
+                match Time::is_valid(&input) {
+                    Ok(_) => {
+                        assets.textarea.set_style(Style::default().fg(color_green));
+                        assets.textarea.set_block(
                             Block::default()
-                                .border_style(color_text)
+                                .border_style(color_green)
                                 .borders(Borders::ALL)
-                                .title("Enter a time (e.g. 100ns)".to_string()),
-                        );
-                    } else {
-                        self.textarea.set_style(Style::default().fg(color_red));
-                        self.textarea.set_block(
-                            Block::default()
-                                .border_style(color_red)
-                                .borders(Borders::ALL)
-                                .title(format!(
-                                    "Enter a time (e.g. 100ns) [Invalid: {}]",
-                                    e.message()
-                                )),
+                                .title("Enter a time (e.g. 100ns) [Valid]"),
                         );
                     }
-                }
-            };
-
-            let vertical = Layout::vertical([Constraint::Max(3)]).flex(Flex::Start);
-            let horizontal = Layout::horizontal([Constraint::Max(80)]).flex(Flex::Center);
-            let [area] = vertical.areas(frame.area());
-            let [area] = horizontal.areas(area);
-            frame.render_widget(widgets::Clear, area); //this clears out the background
-            frame.render_widget(&self.textarea, area);
-        } else if self.mode == AppMode::AddSignal {
-            let vertical = Layout::vertical([Constraint::Max(30)]).flex(Flex::Center);
-            let horizontal = Layout::horizontal([Constraint::Max(80)]).flex(Flex::Center);
-            let [area] = vertical.areas(frame.area());
-            let [area] = horizontal.areas(area);
-            frame.render_widget(widgets::Clear, area); //this clears out the background
-
-            let undisplayed_signals: Vec<Span> = self
-                .undisplayed_signals
-                .iter()
-                .enumerate()
-                .map(|(i, x)| {
-                    Span::styled(
-                        x.borrow().output_path().clone(),
-                        if i == self.choice_index {
-                            Style::default().fg(Color::Blue)
+                    Err(e) => {
+                        if input.is_empty() {
+                            assets.textarea.set_style(Style::default().fg(color_text));
+                            assets.textarea.set_block(
+                                Block::default()
+                                    .border_style(color_text)
+                                    .borders(Borders::ALL)
+                                    .title("Enter a time (e.g. 100ns)".to_string()),
+                            );
                         } else {
-                            Style::default()
-                        },
-                    )
-                })
-                .collect();
-            let lines: Vec<Line> = undisplayed_signals
-                .iter()
-                .map(|x| Line::from(x.clone()))
-                .collect();
-            let par = Paragraph::new(lines).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title_top("Add signals, press 'q' to exit"),
-            );
-            frame.render_widget(par, area);
+                            assets.textarea.set_style(Style::default().fg(color_red));
+                            assets.textarea.set_block(
+                                Block::default()
+                                    .border_style(color_red)
+                                    .borders(Borders::ALL)
+                                    .title(format!(
+                                        "Enter a time (e.g. 100ns) [Invalid: {}]",
+                                        e.message()
+                                    )),
+                            );
+                        }
+                    }
+                };
+
+                let vertical = Layout::vertical([Constraint::Max(3)]).flex(Flex::Start);
+                let horizontal = Layout::horizontal([Constraint::Max(80)]).flex(Flex::Center);
+                let [area] = vertical.areas(frame.area());
+                let [area] = horizontal.areas(area);
+                frame.render_widget(widgets::Clear, area); //this clears out the background
+                frame.render_widget(&assets.textarea, area);
+            }
+            AppMode::AddSignal => {
+                let vertical = Layout::vertical([Constraint::Max(30)]).flex(Flex::Center);
+                let horizontal = Layout::horizontal([Constraint::Max(80)]).flex(Flex::Center);
+                let [area] = vertical.areas(frame.area());
+                let [area] = horizontal.areas(area);
+                frame.render_widget(widgets::Clear, area); //this clears out the background
+
+                let undisplayed_signals: Vec<Span> = self
+                    .undisplayed_signals
+                    .iter()
+                    .enumerate()
+                    .map(|(i, x)| {
+                        Span::styled(
+                            x.borrow().output_path().clone(),
+                            if i == self.choice_index {
+                                Style::default().fg(Color::Blue)
+                            } else {
+                                Style::default()
+                            },
+                        )
+                    })
+                    .collect();
+                let lines: Vec<Line> = undisplayed_signals
+                    .iter()
+                    .map(|x| Line::from(x.clone()))
+                    .collect();
+                let par = Paragraph::new(lines).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title_top("Add signals, press 'q' to exit"),
+                );
+                frame.render_widget(par, area);
+            }
+            _ => {}
         }
     }
 
     fn handle_key_event(&mut self, key_event: event::KeyEvent) -> io::Result<()> {
-        match self.mode {
-            AppMode::Run => match key_event.code {
+        let mut new_mode = None;
+
+        match &mut self.mode {
+            AppMode::Run(_) => match key_event.code {
                 KeyCode::Char('a') => {
                     self.mode = AppMode::AddSignal;
                     self.choice_index = 0;
@@ -310,37 +335,35 @@ impl<'a> App<'a> {
                         .increase(self.arr_size as u64 / 2 * self.time_step.time());
                 }
                 KeyCode::Char('t') => {
-                    self.mode = AppMode::Input;
-                    // Initialize textarea
-                    self.textarea = TextArea::default();
+                    self.mode = AppMode::Input(Box::default());
                 }
                 _ => {}
             },
 
-            AppMode::Input => match key_event.code {
+            AppMode::Input(assets) => match key_event.code {
                 // When pressing Esc, directly return to the normal mode
                 KeyCode::Esc => {
-                    self.mode = AppMode::Run;
+                    self.mode = AppMode::Run(Box::default());
                 }
                 KeyCode::Enter => {
-                    if Time::is_valid(self.textarea.lines()[0].as_str()).is_ok() {
-                        self.mode = AppMode::Run;
-                        let text = self.textarea.lines(); // Get input text
+                    if Time::is_valid(assets.textarea.lines()[0].as_str()).is_ok() {
+                        new_mode = Some(AppMode::Run(Box::default()));
+                        let text = assets.textarea.lines(); // Get input text
                         let text = text.first().unwrap();
                         let time = Time::from_str(text).unwrap();
                         self.time_start = time;
                     }
                 }
                 _ => {
-                    self.textarea.input(key_event);
+                    assets.textarea.input(key_event);
                 }
             },
             AppMode::AddSignal => match key_event.code {
                 KeyCode::Esc => {
-                    self.mode = AppMode::Run;
+                    self.mode = AppMode::Run(Box::default());
                 }
                 KeyCode::Char('q') => {
-                    self.mode = AppMode::Run;
+                    self.mode = AppMode::Run(Box::default());
                 }
                 KeyCode::Char('j') => {
                     self.choice_index += 1;
@@ -363,6 +386,11 @@ impl<'a> App<'a> {
             },
             _ => {}
         }
+
+        if let Some(mode) = new_mode {
+            self.mode = mode;
+        }
+
         Ok(())
     }
 
