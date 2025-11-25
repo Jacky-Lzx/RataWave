@@ -1,5 +1,6 @@
 use crate::{
     modules::{
+        cli_args::CliArgs,
         module::Module,
         signal::{DisplayEvent, Signal, ValueDisplayEvent, VectorDisplayEvent},
         time::Time,
@@ -65,9 +66,8 @@ fn filter_displayed_signals(
 }
 
 impl<'a> App<'a> {
-    pub fn default() -> io::Result<Self> {
-        let (module_root, time_base_scale) =
-            parse_files(String::from("./assets/verilog/test_1.vcd"))?;
+    pub fn default(cli_args: CliArgs) -> io::Result<Self> {
+        let (module_root, time_base_scale) = parse_files(cli_args.file_path)?;
         debug!("Root: {}", module_root.borrow());
         let signals = module_root.borrow().get_signals();
         let undisplayed_signals = filter_displayed_signals(&signals, &vec![]);
