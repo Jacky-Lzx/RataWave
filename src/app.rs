@@ -326,7 +326,7 @@ impl<'a> App<'a> {
                 let par = Paragraph::new(lines).block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .title_top("Add signals, press 'q' to exit"),
+                        .title_top("Add signals, press 'a' to add all, press 'q' to exit"),
                 );
                 frame.render_widget(par, area);
             }
@@ -421,11 +421,16 @@ impl<'a> App<'a> {
                 let assets = assets.as_mut();
 
                 match key_event.code {
-                    KeyCode::Esc => {
+                    KeyCode::Esc | KeyCode::Char('q') => {
                         self.mode = AppMode::Run(Box::default());
                     }
-                    KeyCode::Char('q') => {
+                    KeyCode::Char('a') => {
                         self.mode = AppMode::Run(Box::default());
+                        // Add all signals to displayed signals
+                        for signal in &self.undisplayed_signals {
+                            self.displayed_signals.push(Rc::clone(signal));
+                        }
+                        self.undisplayed_signals.clear();
                     }
                     KeyCode::Char('j') => {
                         assets.choice_index = if self.undisplayed_signals.is_empty() {
