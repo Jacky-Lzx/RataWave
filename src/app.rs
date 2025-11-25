@@ -24,7 +24,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
     layout::{Constraint, Direction, Flex, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Style, Styled},
     text::{Line, Span},
     widgets::{self, Block, Borders, Paragraph},
 };
@@ -37,23 +37,31 @@ enum AppMode<'a> {
     Run(Box<RunAssets>),
     Input(Box<InputAssets<'a>>),
     Exit,
-    AddSignal,
+    SignalAdd(Box<SignalAddAssets>),
 }
 
 #[derive(PartialEq, Default)]
 struct RunAssets {
-    choice_index: usize,
+    // None if there are no signal
+    choice_index: Option<usize>,
+}
+
+#[derive(PartialEq, Default)]
+struct SignalAddAssets {
+    // None if there are no signal
+    choice_index: Option<usize>,
 }
 
 #[derive(Default)]
 struct InputAssets<'a> {
     textarea: TextArea<'a>,
-    choice_index: usize,
+    // None if there are no signal
+    choice_index: Option<usize>,
 }
 
 impl PartialEq for InputAssets<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.choice_index == other.choice_index && self.textarea.lines() == other.textarea.lines()
+        self.choice_index == other.choice_index
     }
 }
 
@@ -67,8 +75,6 @@ pub struct App<'a> {
     arr_size: usize,
     // time_scale: TimescaleUnit,
     mode: AppMode<'a>,
-    choice_index: usize,
-    // textarea: TextArea<'a>,
 }
 
 fn filter_displayed_signals(
@@ -91,7 +97,7 @@ impl<'a> App<'a> {
         let undisplayed_signals = filter_displayed_signals(&signals, &[]);
 
         Ok(Self {
-            mode: AppMode::AddSignal,
+            mode: AppMode::SignalAdd(Box::default()),
             module_root,
             signals,
             displayed_signals: vec![],
@@ -99,8 +105,6 @@ impl<'a> App<'a> {
             time_start: Time::new(0, time_base_scale),
             time_step: Time::new(10, time_base_scale),
             arr_size: 100,
-            choice_index: 0,
-            // textarea: TextArea::default(),
         })
     }
 
@@ -189,11 +193,26 @@ impl<'a> App<'a> {
         // Display signals
         for (index, signal) in self.displayed_signals.iter().enumerate() {
             let signal = signal.borrow();
-            let mut signal_event_lines = self.get_lines_from_a_signal(&signal);
+
+            if let AppMode::Run(assets) = &mut self.mode
+                && assets.choice_index.is_none()
+                && !self.displayed_signals.is_empty()
+            {
+                assets.choice_index = Some(0);
+            }
+
+            let signal_event_lines = self.get_lines_from_a_signal(&signal);
             // signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(&signal)));
 
             let signal_graph = Paragraph::new(signal_event_lines);
 
+            let selected_signal_style = if let AppMode::Run(assets) = &self.mode
+                && assets.choice_index.is_some_and(|x| x == index)
+            {
+                Style::default().bg(Color::DarkGray)
+            } else {
+                Style::default()
+            };
             let signal_name = Paragraph::new(
                 Line::from(
                     self.displayed_signals
@@ -204,7 +223,8 @@ impl<'a> App<'a> {
                 )
                 .centered(),
             )
-            .block(Block::default().borders(Borders::TOP));
+            .block(Block::default().borders(Borders::TOP))
+            .style(selected_signal_style);
 
             frame.render_widget(signal_name, signal_layouts[index][0]);
             frame.render_widget(signal_graph, signal_layouts[index][1]);
@@ -230,7 +250,7 @@ impl<'a> App<'a> {
 
                 let input = &assets.textarea.lines()[0];
 
-                match Time::is_valid(&input) {
+                match Time::is_valid(input) {
                     Ok(_) => {
                         assets.textarea.set_style(Style::default().fg(color_green));
                         assets.textarea.set_block(
@@ -271,7 +291,13 @@ impl<'a> App<'a> {
                 frame.render_widget(widgets::Clear, area); //this clears out the background
                 frame.render_widget(&assets.textarea, area);
             }
-            AppMode::AddSignal => {
+            AppMode::SignalAdd(assets) => {
+                let assets = assets.as_mut();
+
+                if assets.choice_index.is_none() && !self.undisplayed_signals.is_empty() {
+                    assets.choice_index = Some(0);
+                }
+
                 let vertical = Layout::vertical([Constraint::Max(30)]).flex(Flex::Center);
                 let horizontal = Layout::horizontal([Constraint::Max(80)]).flex(Flex::Center);
                 let [area] = vertical.areas(frame.area());
@@ -285,7 +311,7 @@ impl<'a> App<'a> {
                     .map(|(i, x)| {
                         Span::styled(
                             x.borrow().output_path().clone(),
-                            if i == self.choice_index {
+                            if i == assets.choice_index.unwrap() {
                                 Style::default().fg(Color::Blue)
                             } else {
                                 Style::default()
@@ -312,10 +338,9 @@ impl<'a> App<'a> {
         let mut new_mode = None;
 
         match &mut self.mode {
-            AppMode::Run(_) => match key_event.code {
+            AppMode::Run(assets) => match key_event.code {
                 KeyCode::Char('a') => {
-                    self.mode = AppMode::AddSignal;
-                    self.choice_index = 0;
+                    self.mode = AppMode::SignalAdd(Box::default());
                 }
                 KeyCode::Char('q') => {
                     self.mode = AppMode::Exit;
@@ -333,6 +358,40 @@ impl<'a> App<'a> {
                 KeyCode::Char('l') => {
                     self.time_start
                         .increase(self.arr_size as u64 / 2 * self.time_step.time());
+                }
+                KeyCode::Char('j') => {
+                    let assets = assets.as_mut();
+                    assets.choice_index = if self.displayed_signals.is_empty() {
+                        None
+                    } else {
+                        Some(min(
+                            assets.choice_index.unwrap_or_default() + 1,
+                            self.displayed_signals.len() - 1,
+                        ))
+                    };
+                }
+                KeyCode::Char('k') => {
+                    let assets = assets.as_mut();
+                    assets.choice_index =
+                        Some(assets.choice_index.unwrap_or_default().saturating_sub(1));
+                }
+                // Deleted the selected signal
+                KeyCode::Char('d') => {
+                    if self.displayed_signals.is_empty() {
+                        return Ok(());
+                    }
+
+                    let assets = assets.as_mut();
+                    let signal = self
+                        .displayed_signals
+                        .remove(assets.choice_index.unwrap_or_default());
+                    self.undisplayed_signals.push(signal);
+                    if !self.displayed_signals.is_empty() {
+                        assets.choice_index = Some(min(
+                            assets.choice_index.unwrap_or_default(),
+                            self.displayed_signals.len() - 1,
+                        ))
+                    }
                 }
                 KeyCode::Char('t') => {
                     self.mode = AppMode::Input(Box::default());
@@ -358,32 +417,51 @@ impl<'a> App<'a> {
                     assets.textarea.input(key_event);
                 }
             },
-            AppMode::AddSignal => match key_event.code {
-                KeyCode::Esc => {
-                    self.mode = AppMode::Run(Box::default());
-                }
-                KeyCode::Char('q') => {
-                    self.mode = AppMode::Run(Box::default());
-                }
-                KeyCode::Char('j') => {
-                    self.choice_index += 1;
-                    self.choice_index = min(self.choice_index, self.undisplayed_signals.len() - 1);
-                }
-                KeyCode::Char('k') => {
-                    self.choice_index = max(1, self.choice_index) - 1;
-                }
-                KeyCode::Enter | KeyCode::Char(' ') => {
-                    self.displayed_signals.push(Rc::clone(
-                        self.undisplayed_signals.get(self.choice_index).unwrap(),
-                    ));
-                    self.undisplayed_signals.remove(self.choice_index);
-                    if !self.undisplayed_signals.is_empty() {
-                        self.choice_index =
-                            min(self.choice_index, self.undisplayed_signals.len() - 1)
+            AppMode::SignalAdd(assets) => {
+                let assets = assets.as_mut();
+
+                match key_event.code {
+                    KeyCode::Esc => {
+                        self.mode = AppMode::Run(Box::default());
                     }
+                    KeyCode::Char('q') => {
+                        self.mode = AppMode::Run(Box::default());
+                    }
+                    KeyCode::Char('j') => {
+                        assets.choice_index = if self.undisplayed_signals.is_empty() {
+                            None
+                        } else {
+                            Some(min(
+                                assets.choice_index.unwrap_or_default() + 1,
+                                self.undisplayed_signals.len() - 1,
+                            ))
+                        }
+                    }
+                    KeyCode::Char('k') => {
+                        assets.choice_index = assets.choice_index.map(|x| x.saturating_sub(1));
+                    }
+                    KeyCode::Enter | KeyCode::Char(' ') => {
+                        if self.undisplayed_signals.is_empty() {
+                            return Ok(());
+                        }
+
+                        self.displayed_signals.push(Rc::clone(
+                            self.undisplayed_signals
+                                .get(assets.choice_index.unwrap_or_default())
+                                .unwrap(),
+                        ));
+                        self.undisplayed_signals
+                            .remove(assets.choice_index.unwrap_or_default());
+                        if !self.undisplayed_signals.is_empty() {
+                            assets.choice_index = Some(min(
+                                assets.choice_index.unwrap_or_default(),
+                                self.undisplayed_signals.len() - 1,
+                            ))
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             _ => {}
         }
 

@@ -1,0 +1,3 @@
+[codespell]
+dictionary = ratatui
+ignore-words-list = bu,noice
