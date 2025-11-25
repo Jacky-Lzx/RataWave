@@ -114,7 +114,7 @@ impl<'a> App<'a> {
         let signal_layouts = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
-                Constraint::Max(4);
+                Constraint::Max(3);
                 // FIXME: if displayed_signals = 0, it will crash, so adding a max here
                 max(1, self.displayed_signals.len())
             ])
@@ -173,17 +173,21 @@ impl<'a> App<'a> {
         for (index, signal) in self.displayed_signals.iter().enumerate() {
             let signal = signal.borrow();
             let mut signal_event_lines = self.get_lines_from_a_signal(&signal);
-            signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(&signal)));
+            // signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(&signal)));
 
             let signal_graph = Paragraph::new(signal_event_lines);
 
-            let signal_name = Line::from(
-                self.displayed_signals
-                    .get(index)
-                    .unwrap()
-                    .borrow()
-                    .output_name(),
-            );
+            let signal_name = Paragraph::new(
+                Line::from(
+                    self.displayed_signals
+                        .get(index)
+                        .unwrap()
+                        .borrow()
+                        .output_name(),
+                )
+                .centered(),
+            )
+            .block(Block::default().borders(Borders::TOP));
 
             frame.render_widget(signal_name, signal_layouts[index][0]);
             frame.render_widget(signal_graph, signal_layouts[index][1]);
@@ -345,7 +349,7 @@ impl<'a> App<'a> {
                 KeyCode::Char('k') => {
                     self.choice_index = max(1, self.choice_index) - 1;
                 }
-                KeyCode::Enter => {
+                KeyCode::Enter | KeyCode::Char(' ') => {
                     self.displayed_signals.push(Rc::clone(
                         self.undisplayed_signals.get(self.choice_index).unwrap(),
                     ));
