@@ -141,25 +141,21 @@ impl<'a> App<'a> {
             .split(main_layouts[0]);
 
         let signal_layouts = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![
-                Constraint::Max(3);
-                // FIXME: if displayed_signals = 0, it will crash, so adding a max here
-                max(1, self.displayed_signals.len())
-            ])
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Fill(1), Constraint::Fill(9)])
             .split(main_layouts[1]);
 
-        let signal_layouts: Vec<Rc<[Rect]>> = signal_layouts
-            .iter()
-            .map(|&x| {
-                Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints(vec![Constraint::Fill(1), Constraint::Fill(9)])
-                    .split(x)
-            })
-            .collect();
+        // let signal_layouts: Vec<Rc<[Rect]>> = signal_layouts
+        //     .iter()
+        //     .map(|&x| {
+        //         Layout::default()
+        //             .direction(Direction::Horizontal)
+        //             .constraints(vec![Constraint::Fill(1), Constraint::Fill(9)])
+        //             .split(x)
+        //     })
+        //     .collect();
 
-        self.arr_size = signal_layouts[0][1].width as usize;
+        self.arr_size = signal_layouts[1].width as usize;
 
         // Display program title
         let redundant = Paragraph::new(Line::from("RataWave").centered())
@@ -195,21 +191,25 @@ impl<'a> App<'a> {
 
         frame.render_widget(time_show, name_stamp_layouts[1]);
 
+        if let AppMode::Run(assets) = &mut self.mode
+            && assets.choice_index.is_none()
+            && !self.displayed_signals.is_empty()
+        {
+            assets.choice_index = Some(0);
+        }
+
+        let mut signal_graphs = Vec::<ListItem>::new();
+        let mut signal_names = Vec::<ListItem>::new();
+
         // Display signals
         for (index, signal) in self.displayed_signals.iter().enumerate() {
             let signal = signal.borrow();
 
-            if let AppMode::Run(assets) = &mut self.mode
-                && assets.choice_index.is_none()
-                && !self.displayed_signals.is_empty()
-            {
-                assets.choice_index = Some(0);
-            }
-
             let signal_event_lines = self.get_lines_from_a_signal(&signal);
             // signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(&signal)));
 
-            let signal_graph = Paragraph::new(signal_event_lines);
+            let signal_graph = ListItem::from(signal_event_lines);
+            signal_graphs.push(signal_graph);
 
             let selected_signal_style = if let AppMode::Run(assets) = &self.mode {
                 if assets.choice_index.is_some_and(|x| x == index) {
@@ -226,7 +226,20 @@ impl<'a> App<'a> {
             } else {
                 Style::default()
             };
-            let signal_name = Paragraph::new(
+            // let signal_name = Paragraph::new(
+            //     Line::from(
+            //         self.displayed_signals
+            //             .get(index)
+            //             .unwrap()
+            //             .borrow()
+            //             .output_name(),
+            //     )
+            //     .centered(),
+            // )
+            // .block(Block::default().borders(Borders::TOP))
+            // .style(selected_signal_style);
+            let signal_name = ListItem::new(Text::from(vec![
+                Line::from("\n"),
                 Line::from(
                     self.displayed_signals
                         .get(index)
@@ -235,13 +248,17 @@ impl<'a> App<'a> {
                         .output_name(),
                 )
                 .centered(),
-            )
-            .block(Block::default().borders(Borders::TOP))
+                Line::from("\n"),
+            ]))
             .style(selected_signal_style);
-
-            frame.render_widget(signal_name, signal_layouts[index][0]);
-            frame.render_widget(signal_graph, signal_layouts[index][1]);
+            signal_names.push(signal_name);
         }
+
+        let signal_name_list = List::new(signal_names);
+        let signal_graph_list = List::new(signal_graphs);
+
+        frame.render_widget(signal_name_list, signal_layouts[0]);
+        frame.render_widget(signal_graph_list, signal_layouts[1]);
 
         match &mut self.mode {
             AppMode::Input(assets) => {
@@ -546,7 +563,7 @@ impl<'a> App<'a> {
         let mut lines = display_event_arr.iter().fold(vec![], |mut lines, event| {
             if lines.is_empty() {
                 lines = match event {
-                    DisplayEvent::Value(_) => vec![vec![]; 2],
+                    DisplayEvent::Value(_) => vec![vec![]; 3],
                     DisplayEvent::Vector(_) => vec![vec![]; 3],
                 };
             }
