@@ -11,20 +11,23 @@ use crate::time::Time;
 
 use super::signal::{Signal, ValueType};
 
+pub type ParentModule = Weak<RefCell<Module>>;
+pub type SubModule = Rc<RefCell<Module>>;
+
 /// A module struct representing modules in the VCD file.
 /// A root module is created to contain the top-level signals.
 pub struct Module {
     pub(crate) name: String,
     pub(crate) depth: u8,
     pub(crate) signals: Vec<Rc<RefCell<Signal>>>,
-    pub(crate) submodules: Vec<Rc<RefCell<Module>>>,
-    pub(crate) parent: Option<Weak<RefCell<Module>>>,
+    pub(crate) submodules: Vec<SubModule>,
+    pub(crate) parent: Option<ParentModule>,
 }
 
 impl Module {
     /// Build a module from the scope
     /// The parent of the module is set to None
-    pub fn from_scope(scope: &Scope, depth: u8) -> Rc<RefCell<Module>> {
+    pub fn from_scope(scope: &Scope, depth: u8) -> SubModule {
         assert!(scope.scope_type == ScopeType::Module);
         let mut signals = vec![];
         let mut sub_modules = vec![];
