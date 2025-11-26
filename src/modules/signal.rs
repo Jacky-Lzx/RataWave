@@ -94,6 +94,12 @@ impl Signal {
     pub fn add_event(&mut self, timestamp: u64, value: ValueType) {
         self.events.push((timestamp, value));
     }
+
+    pub fn is_vector(&self) -> bool {
+        self.events
+            .iter()
+            .any(|(_, v)| matches!(v, ValueType::Vector(_)))
+    }
 }
 
 impl Display for Signal {

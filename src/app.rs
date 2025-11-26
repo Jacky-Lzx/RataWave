@@ -16,6 +16,7 @@ use std::{
     cell::RefCell,
     cmp::{max, min},
     io::{self},
+    ops::Deref,
     rc::Rc,
 };
 
@@ -40,10 +41,17 @@ enum AppMode<'a> {
     SignalAdd(Box<SignalAddAssets>),
 }
 
-#[derive(PartialEq, Default)]
+#[derive(Default)]
 struct RunAssets {
     // None if there are no signal
     choice_index: Option<usize>,
+    expended_signals: Vec<Rc<RefCell<Signal>>>,
+}
+
+impl PartialEq for RunAssets {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 #[derive(PartialEq, Default)]
@@ -206,10 +214,18 @@ impl<'a> App<'a> {
 
             let signal_graph = Paragraph::new(signal_event_lines);
 
-            let selected_signal_style = if let AppMode::Run(assets) = &self.mode
-                && assets.choice_index.is_some_and(|x| x == index)
-            {
-                Style::default().bg(Color::DarkGray)
+            let selected_signal_style = if let AppMode::Run(assets) = &self.mode {
+                if assets.choice_index.is_some_and(|x| x == index) {
+                    Style::default().bg(Color::DarkGray)
+                } else if assets
+                    .expended_signals
+                    .iter()
+                    .any(|x| Rc::ptr_eq(x, &self.displayed_signals[index]))
+                {
+                    Style::default().bg(Color::Gray)
+                } else {
+                    Style::default()
+                }
             } else {
                 Style::default()
             };
@@ -358,6 +374,29 @@ impl<'a> App<'a> {
                 KeyCode::Char('l') => {
                     self.time_start
                         .increase(self.arr_size as u64 / 2 * self.time_step.time());
+                }
+                KeyCode::Char(' ') => {
+                    let assets = assets.as_mut();
+                    if let Some(index) = assets.choice_index {
+                        if self.displayed_signals.is_empty() {
+                            return Ok(());
+                        }
+                        let signal = self.displayed_signals[index].clone();
+
+                        if !signal.borrow().deref().is_vector() {
+                            return Ok(());
+                        }
+
+                        if assets
+                            .expended_signals
+                            .iter()
+                            .any(|x| Rc::ptr_eq(x, &signal))
+                        {
+                            assets.expended_signals.retain(|x| !Rc::ptr_eq(x, &signal));
+                        } else {
+                            assets.expended_signals.push(signal);
+                        }
+                    }
                 }
                 KeyCode::Char('j') => {
                     let assets = assets.as_mut();
