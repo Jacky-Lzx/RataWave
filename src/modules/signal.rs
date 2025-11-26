@@ -1,6 +1,8 @@
 use core::{fmt, panic};
 use std::{cell::RefCell, fmt::Display, rc::Weak};
 
+use crate::time::Time;
+
 use vcd::{IdCode, Value, Var, Vector};
 
 use super::module::Module;
@@ -77,7 +79,7 @@ pub struct Signal {
     // reference string in vcd file
     pub code: IdCode,
     pub name: String,
-    pub events: Vec<(u64, ValueType)>,
+    pub events: Vec<(Time, ValueType)>,
     pub parent_module: Option<Weak<RefCell<Module>>>,
 }
 
@@ -91,7 +93,7 @@ impl Signal {
         }
     }
 
-    pub fn add_event(&mut self, timestamp: u64, value: ValueType) {
+    pub fn add_event(&mut self, timestamp: Time, value: ValueType) {
         self.events.push((timestamp, value));
     }
 
@@ -137,8 +139,13 @@ impl Signal {
     /// - `time_start` - the start time
     /// - `time_step` - the minimal time step
     /// - `arr_size` - the size of the final array
-    pub fn events_str_in_range(&self, time_start: u64, time_step: u64, arr_size: usize) -> String {
-        let time_end = time_start + time_step * arr_size as u64;
+    pub fn events_str_in_range(
+        &self,
+        time_start: Time,
+        time_step: Time,
+        arr_size: usize,
+    ) -> String {
+        let time_end = time_start + time_step * arr_size;
         self.events
             .iter()
             .fold(String::new(), |acc, (time, value)| {
@@ -156,8 +163,8 @@ impl Signal {
     /// - `arr_size` - the size of the final array
     pub fn events_arr_in_range(
         &self,
-        time_start: u64,
-        time_step: u64,
+        time_start: Time,
+        time_step: Time,
         arr_size: usize,
     ) -> Vec<DisplayEvent> {
         let mut start_index = 0;
@@ -200,7 +207,7 @@ impl Signal {
                 return;
             }
 
-            let start_time = time_start + (i as u64) * time_step;
+            let start_time = time_start + time_step * i;
             end_index = start_index;
 
             let end_time = start_time + time_step;

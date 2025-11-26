@@ -7,6 +7,8 @@ use std::{
 
 use vcd::{IdCode, Scope, ScopeItem, ScopeType};
 
+use crate::time::Time;
+
 use super::signal::{Signal, ValueType};
 
 /// A module struct representing modules in the VCD file.
@@ -92,7 +94,7 @@ impl Display for Module {
 }
 
 impl Module {
-    pub fn add_event(&mut self, id: IdCode, timestamp: u64, value: ValueType) {
+    pub fn add_event(&mut self, id: IdCode, timestamp: Time, value: ValueType) {
         self.signals
             .iter_mut()
             .filter(|x| x.borrow_mut().code == id)
@@ -113,8 +115,8 @@ impl Module {
         signal_vec
     }
 
-    pub fn max_time(&self) -> u64 {
-        let mut max_time = 0;
+    pub fn max_time(&self) -> Time {
+        let mut max_time = Time::zero();
         self.signals.iter().for_each(|x| {
             if let Some(time) = x.borrow().events.last()
                 && time.0 > max_time

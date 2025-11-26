@@ -25,9 +25,9 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
     layout::{Constraint, Direction, Flex, Layout, Rect},
-    style::{Color, Style, Styled},
-    text::{Line, Span},
-    widgets::{self, Block, Borders, Paragraph},
+    style::{Color, Style},
+    text::{Line, Span, Text},
+    widgets::{self, Block, Borders, List, ListItem, Paragraph},
 };
 use std::str::FromStr;
 use tui_textarea::TextArea;
@@ -110,7 +110,7 @@ impl<'a> App<'a> {
             signals,
             displayed_signals: vec![],
             undisplayed_signals,
-            time_start: Time::new(0, time_base_scale),
+            time_start: Time::zero(),
             time_step: Time::new(10, time_base_scale),
             arr_size: 100,
         })
@@ -173,10 +173,7 @@ impl<'a> App<'a> {
         let mut time_stamp_graph = String::from("");
         let mut stamp_index = 0;
         while stamp_index < self.arr_size {
-            let mut time_stamp = format!(
-                "{}",
-                self.time_start.clone() + stamp_index as u64 * self.time_step.time()
-            );
+            let mut time_stamp = format!("{}", self.time_start + self.time_step * stamp_index);
             let strip_len = min(10, self.arr_size - stamp_index);
             if time_stamp.len() > strip_len {
                 time_stamp = time_stamp[0..strip_len].to_string();
@@ -368,12 +365,10 @@ impl<'a> App<'a> {
                     self.time_step.step_increase();
                 }
                 KeyCode::Char('h') => {
-                    self.time_start
-                        .decrease(self.arr_size as u64 / 2 * self.time_step.time());
+                    self.time_start = self.time_step * (self.arr_size / 2);
                 }
                 KeyCode::Char('l') => {
-                    self.time_start
-                        .increase(self.arr_size as u64 / 2 * self.time_step.time());
+                    self.time_start += self.time_step * (self.arr_size / 2);
                 }
                 KeyCode::Char(' ') => {
                     let assets = assets.as_mut();
@@ -518,7 +513,7 @@ impl<'a> App<'a> {
 
     fn get_value_string_from_a_signal(&self, signal: &Signal) -> String {
         signal
-            .events_arr_in_range(self.time_start.time(), self.time_step.time(), self.arr_size)
+            .events_arr_in_range(self.time_start, self.time_step, self.arr_size)
             .iter()
             .map(|x| match x {
                 DisplayEvent::Value(value_display_event) => match value_display_event {
@@ -536,11 +531,8 @@ impl<'a> App<'a> {
     }
 
     fn get_lines_from_a_signal(&'_ self, signal: &Signal) -> Vec<Line<'_>> {
-        let display_event_arr = signal.events_arr_in_range(
-            self.time_start.time(),
-            self.time_step.time(),
-            self.arr_size,
-        );
+        let display_event_arr =
+            signal.events_arr_in_range(self.time_start, self.time_step, self.arr_size);
 
         let color_green = (*catppuccin::PALETTE
             .mocha

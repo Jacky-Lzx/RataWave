@@ -15,6 +15,7 @@ use vcd::{ScopeItem, TimescaleUnit, Value, Vector};
 use crate::{
     module::Module,
     signal::{Signal, ValueType},
+    time::Time,
 };
 
 pub fn parse_files(file_name: String) -> io::Result<(Rc<RefCell<Module>>, TimescaleUnit)> {
@@ -61,13 +62,13 @@ pub fn parse_files(file_name: String) -> io::Result<(Rc<RefCell<Module>>, Timesc
         .iter()
         .for_each(|x| x.borrow_mut().parent_module = Some(Rc::downgrade(&root)));
 
-    let mut cur_time_stamp = 0;
+    let mut cur_time_stamp = Time::zero();
     for command_result in parser {
         let command = command_result?;
         use vcd::Command::*;
         match command {
             Timestamp(t) => {
-                cur_time_stamp = t;
+                cur_time_stamp = Time::new(t, TimescaleUnit::PS);
             }
             ChangeScalar(id, value) => {
                 root.borrow_mut()
