@@ -1,6 +1,7 @@
 use crate::{
     modules::{
         cli_args::CliArgs,
+        display::{DisplayedSignal, DisplayedSignalTrait},
         module::Module,
         signal::{DisplayEvent, Signal, ValueDisplayEvent, VectorDisplayEvent},
         time::Time,
@@ -25,7 +26,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
     layout::{Constraint, Direction, Flex, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Style, Styled},
     text::{Line, Span, Text},
     widgets::{self, Block, Borders, List, ListItem, Paragraph},
 };
@@ -45,7 +46,7 @@ enum AppMode<'a> {
 struct RunAssets {
     // None if there are no signal
     choice_index: Option<usize>,
-    expended_signals: Vec<Rc<RefCell<Signal>>>,
+    // expended_signals: Vec<Rc<RefCell<Signal>>>,
 }
 
 impl PartialEq for RunAssets {
@@ -76,8 +77,8 @@ impl PartialEq for InputAssets<'_> {
 pub struct App<'a> {
     module_root: Rc<RefCell<Module>>,
     signals: Vec<Rc<RefCell<Signal>>>,
-    displayed_signals: Vec<Rc<RefCell<Signal>>>,
-    undisplayed_signals: Vec<Rc<RefCell<Signal>>>,
+    displayed_signals: Vec<DisplayedSignal>,
+    undisplayed_signals: Vec<DisplayedSignal>,
     time_start: Time,
     time_step: Time,
     arr_size: usize,
@@ -103,6 +104,11 @@ impl<'a> App<'a> {
 
         let signals = module_root.borrow().get_signals();
         let undisplayed_signals = filter_displayed_signals(&signals, &[]);
+
+        let undisplayed_signals = undisplayed_signals
+            .into_iter()
+            .map(DisplayedSignal::from)
+            .collect::<Vec<_>>();
 
         Ok(Self {
             mode: AppMode::SignalAdd(Box::default()),
@@ -198,64 +204,51 @@ impl<'a> App<'a> {
             assets.choice_index = Some(0);
         }
 
-        let mut signal_graphs = Vec::<ListItem>::new();
-        let mut signal_names = Vec::<ListItem>::new();
+        let mut signal_graphs: Vec<Vec<ListItem>> = Vec::new();
+        let mut signal_names: Vec<Vec<ListItem>> = Vec::new();
 
         // Display signals
         for (index, signal) in self.displayed_signals.iter().enumerate() {
-            let signal = signal.borrow();
+            signal_graphs.push(signal.get_graph_items(
+                self.time_start,
+                self.time_step,
+                self.arr_size,
+            ));
 
-            let signal_event_lines = self.get_lines_from_a_signal(&signal);
-            // signal_event_lines.insert(0, Line::from(self.get_value_string_from_a_signal(&signal)));
+            let signal_item = signal
+                .get_name_items()
+                .into_iter()
+                .map(|item| {
+                    if let AppMode::Run(assets) = &self.mode {
+                        if assets.choice_index.is_some_and(|x| x == index) {
+                            let style = Style::default().bg(Color::DarkGray);
+                            item.style(style)
+                        } else {
+                            item
+                        }
+                    } else {
+                        item
+                    }
+                })
+                .collect::<Vec<ListItem>>();
 
-            let signal_graph = ListItem::from(signal_event_lines);
-            signal_graphs.push(signal_graph);
-
-            let selected_signal_style = if let AppMode::Run(assets) = &self.mode {
-                if assets.choice_index.is_some_and(|x| x == index) {
-                    Style::default().bg(Color::DarkGray)
-                } else if assets
-                    .expended_signals
-                    .iter()
-                    .any(|x| Rc::ptr_eq(x, &self.displayed_signals[index]))
-                {
-                    Style::default().bg(Color::Gray)
-                } else {
-                    Style::default()
-                }
-            } else {
-                Style::default()
-            };
-            // let signal_name = Paragraph::new(
-            //     Line::from(
-            //         self.displayed_signals
-            //             .get(index)
-            //             .unwrap()
-            //             .borrow()
-            //             .output_name(),
-            //     )
-            //     .centered(),
-            // )
-            // .block(Block::default().borders(Borders::TOP))
-            // .style(selected_signal_style);
-            let signal_name = ListItem::new(Text::from(vec![
-                Line::from("\n"),
-                Line::from(
-                    self.displayed_signals
-                        .get(index)
-                        .unwrap()
-                        .borrow()
-                        .output_name(),
-                )
-                .centered(),
-                Line::from("\n"),
-            ]))
-            .style(selected_signal_style);
-            signal_names.push(signal_name);
+            signal_names.push(signal_item);
         }
 
-        let signal_name_list = List::new(signal_names);
-        let signal_graph_list = List::new(signal_graphs);
+        let signal_name_list = List::new(
+            signal_names
+                .iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<ListItem>>(),
+        );
+        let signal_graph_list = List::new(
+            signal_graphs
+                .iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<ListItem>>(),
+        );
 
         frame.render_widget(signal_name_list, signal_layouts[0]);
         frame.render_widget(signal_graph_list, signal_layouts[1]);
@@ -340,7 +333,7 @@ impl<'a> App<'a> {
                     .enumerate()
                     .map(|(i, x)| {
                         Span::styled(
-                            x.borrow().output_path().clone(),
+                            x.get_path().clone(),
                             if i == assets.choice_index.unwrap() {
                                 Style::default().fg(Color::Blue)
                             } else {
@@ -393,21 +386,9 @@ impl<'a> App<'a> {
                         if self.displayed_signals.is_empty() {
                             return Ok(());
                         }
-                        let signal = self.displayed_signals[index].clone();
+                        let signal = &mut self.displayed_signals[index];
 
-                        if !signal.borrow().deref().is_vector() {
-                            return Ok(());
-                        }
-
-                        if assets
-                            .expended_signals
-                            .iter()
-                            .any(|x| Rc::ptr_eq(x, &signal))
-                        {
-                            assets.expended_signals.retain(|x| !Rc::ptr_eq(x, &signal));
-                        } else {
-                            assets.expended_signals.push(signal);
-                        }
+                        let _ = signal.toggle_expand();
                     }
                 }
                 KeyCode::Char('j') => {
@@ -478,8 +459,8 @@ impl<'a> App<'a> {
                     KeyCode::Char('a') => {
                         self.mode = AppMode::Run(Box::default());
                         // Add all signals to displayed signals
-                        for signal in &self.undisplayed_signals {
-                            self.displayed_signals.push(Rc::clone(signal));
+                        for signal in self.undisplayed_signals.drain(..) {
+                            self.displayed_signals.push(signal);
                         }
                         self.undisplayed_signals.clear();
                     }
@@ -501,13 +482,12 @@ impl<'a> App<'a> {
                             return Ok(());
                         }
 
-                        self.displayed_signals.push(Rc::clone(
-                            self.undisplayed_signals
-                                .get(assets.choice_index.unwrap_or_default())
-                                .unwrap(),
-                        ));
-                        self.undisplayed_signals
+                        let signal = self
+                            .undisplayed_signals
                             .remove(assets.choice_index.unwrap_or_default());
+
+                        self.displayed_signals.push(signal);
+
                         if !self.undisplayed_signals.is_empty() {
                             assets.choice_index = Some(min(
                                 assets.choice_index.unwrap_or_default(),
