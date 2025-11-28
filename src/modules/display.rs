@@ -69,8 +69,11 @@ impl DisplayedSignalTrait for DisplayedSignal {
             DisplayedSignal::Value(v) => v.signal.clone(),
         };
 
-        data.borrow()
-            .events_arr_in_range(time_start, time_step, arr_size)
+        let events = data
+            .borrow()
+            .events_arr_in_range(time_start, time_step, arr_size);
+
+        events
             .iter()
             .map(|x| match x {
                 DisplayEvent::Value(value_display_event) => match value_display_event {
@@ -93,7 +96,7 @@ impl DisplayedSignalTrait for DisplayedSignal {
             DisplayedSignal::Value(v) => &v.signal.clone(),
         };
 
-        let display_event_arr = signal
+        let events = signal
             .borrow()
             .events_arr_in_range(time_start, time_step, arr_size);
 
@@ -106,7 +109,7 @@ impl DisplayedSignalTrait for DisplayedSignal {
             .get_color(catppuccin::ColorName::Red))
         .into();
 
-        let mut lines = display_event_arr.iter().fold(vec![], |mut lines, event| {
+        let mut lines = events.iter().fold(vec![], |mut lines, event| {
             if lines.is_empty() {
                 lines = match event {
                     DisplayEvent::Value(_) => vec![vec![]; 3],
@@ -165,7 +168,7 @@ impl DisplayedSignalTrait for DisplayedSignal {
         // Show binary values for Vector signals in the middle line
         let mut start_index = None;
         let mut vector_value: Option<Vector> = None;
-        display_event_arr
+        events
             .iter()
             .enumerate()
             .for_each(|(i, event)| match event {
@@ -197,7 +200,7 @@ impl DisplayedSignalTrait for DisplayedSignal {
         // Last vector
         if let Some(index) = start_index {
             use VectorDisplayEvent::*;
-            match &display_event_arr[index] {
+            match &events[index] {
                 DisplayEvent::Vector(ChangeEvent(_)) | DisplayEvent::Vector(Stay(_)) => {
                     let len = lines[1].len();
                     lines[1].splice(

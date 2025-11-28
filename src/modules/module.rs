@@ -7,7 +7,7 @@ use std::{
 
 use vcd::{IdCode, Scope, ScopeItem, ScopeType};
 
-use crate::time::Time;
+use crate::{signal::SignalEvents, time::Time};
 
 use super::signal::{Signal, ValueType};
 
@@ -120,11 +120,23 @@ impl Module {
 
     pub fn max_time(&self) -> Time {
         let mut max_time = Time::zero();
-        self.signals.iter().for_each(|x| {
-            if let Some(time) = x.borrow().events.last()
-                && time.0 > max_time
-            {
-                max_time = time.0;
+        self.signals.iter().for_each(|x| match x.borrow().events {
+            SignalEvents::Unknown => {
+                panic!("Signal events is unknown");
+            }
+            SignalEvents::ValueEvents(ref v) => {
+                if let Some(time) = v.last()
+                    && time.0 > max_time
+                {
+                    max_time = time.0;
+                }
+            }
+            SignalEvents::VectorEvents(ref v) => {
+                if let Some(time) = v.last()
+                    && time.0 > max_time
+                {
+                    max_time = time.0;
+                }
             }
         });
 
