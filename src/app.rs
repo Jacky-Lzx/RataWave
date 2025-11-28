@@ -375,7 +375,7 @@ impl<'a> App<'a> {
                     self.time_step.step_increase();
                 }
                 KeyCode::Char('h') => {
-                    self.time_start = self.time_step * (self.arr_size / 2);
+                    self.time_start -= self.time_step * (self.arr_size / 2);
                 }
                 KeyCode::Char('l') => {
                     self.time_start += self.time_step * (self.arr_size / 2);
