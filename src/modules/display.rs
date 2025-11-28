@@ -178,8 +178,7 @@ impl DisplayedSignalTrait for DisplayedSignal {
                                 middle_str(
                                     i - index - 1,
                                     vector_value.clone().unwrap().to_string(),
-                                )
-                                .into_iter(),
+                                ),
                             );
                         };
                         start_index = Some(i);
@@ -203,7 +202,7 @@ impl DisplayedSignalTrait for DisplayedSignal {
                     let len = lines[1].len();
                     lines[1].splice(
                         index + 1..len,
-                        middle_str(len - index - 1, vector_value.unwrap().to_string()).into_iter(),
+                        middle_str(len - index - 1, vector_value.unwrap().to_string()),
                     );
                 }
                 _ => {}
@@ -233,7 +232,17 @@ impl DisplayedSignalTrait for DisplayedSignal {
         time_step: Time,
         arr_size: usize,
     ) -> Vec<ListItem<'_>> {
-        let item = ListItem::from(self.get_lines(time_start, time_step, arr_size));
+        let style = if self.is_expanded() {
+            Style::default().fg((*catppuccin::PALETTE
+                .mocha
+                .get_color(catppuccin::ColorName::Pink))
+            .into())
+        } else {
+            Style::default()
+        };
+
+        let item = ListItem::from(self.get_lines(time_start, time_step, arr_size)).style(style);
+
         vec![item]
     }
 
@@ -246,12 +255,14 @@ impl DisplayedSignalTrait for DisplayedSignal {
         } else {
             Style::default()
         };
+
         let signal_name = ListItem::new(Text::from(vec![
             Line::from("\n"),
             Line::from(self.get_name()).centered(),
             Line::from("\n"),
         ]))
         .style(style);
+
         vec![signal_name]
     }
 }
