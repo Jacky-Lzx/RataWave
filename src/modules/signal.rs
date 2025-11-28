@@ -5,7 +5,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use crate::{modules::display::DisplayedValue, time::Time};
+use crate::time::Time;
 
 use vcd::{IdCode, Value, Var, Vector};
 
@@ -117,17 +117,17 @@ impl Signal {
                 if let ValueType::Value(v) = value {
                     events.push((timestamp, v));
                 } else {
-                    assert!(false, "Mismatched event type for signal {}", self.name);
+                    unreachable!("Mismatched event type for signal {}", self.name);
                 }
             }
             SignalEvents::VectorEvents(ref mut events) => {
                 if let ValueType::Vector(v) = value {
                     events.push((timestamp, v));
                 } else {
-                    assert!(false, "Mismatched event type for signal {}", self.name);
+                    unreachable!("Mismatched event type for signal {}", self.name);
                 }
             }
-            SignalEvents::Unknown => panic!("Signal events should not be Unknown here"),
+            SignalEvents::Unknown => unreachable!("Signal events should not be Unknown here"),
         }
     }
 

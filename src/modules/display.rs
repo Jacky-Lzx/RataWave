@@ -9,7 +9,7 @@ use crate::{
 };
 
 use ratatui::{
-    style::{Style, Styled},
+    style::Style,
     text::{Line, Span, Text},
     widgets::ListItem,
 };

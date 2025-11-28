@@ -15,9 +15,8 @@ use crate::{
 
 use std::{
     cell::RefCell,
-    cmp::{max, min},
+    cmp::min,
     io::{self},
-    ops::Deref,
     rc::Rc,
 };
 
@@ -25,9 +24,9 @@ use cli_log::debug;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     DefaultTerminal,
-    layout::{Constraint, Direction, Flex, Layout, Rect},
-    style::{Color, Style, Styled},
-    text::{Line, Span, Text},
+    layout::{Constraint, Direction, Flex, Layout},
+    style::{Color, Style},
+    text::{Line, Span},
     widgets::{self, Block, Borders, List, ListItem, Paragraph},
 };
 use std::str::FromStr;
@@ -612,8 +611,7 @@ impl<'a> App<'a> {
                                 middle_str(
                                     i - index - 1,
                                     vector_value.clone().unwrap().to_string(),
-                                )
-                                .into_iter(),
+                                ),
                             );
                         };
                         start_index = Some(i);
@@ -637,7 +635,7 @@ impl<'a> App<'a> {
                     let len = lines[1].len();
                     lines[1].splice(
                         index + 1..len,
-                        middle_str(len - index - 1, vector_value.unwrap().to_string()).into_iter(),
+                        middle_str(len - index - 1, vector_value.unwrap().to_string()),
                     );
                 }
                 _ => {}
